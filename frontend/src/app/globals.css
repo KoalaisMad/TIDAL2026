@@ -127,3 +127,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /* Hide scrollbars while keeping scroll behavior (mobile-friendly). */
+  .scrollbar-none {
+    -ms-overflow-style: none; /* IE/Edge Legacy */
+    scrollbar-width: none; /* Firefox */
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+}

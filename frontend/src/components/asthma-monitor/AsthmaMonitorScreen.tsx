@@ -50,7 +50,7 @@ export function AsthmaMonitorScreen() {
             </div>
           </div>
 
-          <div className="sticky bottom-4 pt-2 md:static">
+          <div className="sticky bottom-4 flex justify-center pt-2 md:static">
             <Button
               size="pill"
               className="w-full shadow-sm md:w-fit md:px-10"
