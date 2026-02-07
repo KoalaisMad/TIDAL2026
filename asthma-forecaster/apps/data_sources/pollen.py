@@ -26,12 +26,13 @@ def pull_pollen(
     """
     api_key = os.environ.get("POLLEN_API_KEY", "").strip()
     if not api_key:
+        # Run without pollen data when key not set (ignore for now)
         return {
             "tree_index": None,
             "grass_index": None,
             "weed_index": None,
             "source": "Pollen",
-            "error": "POLLEN_API_KEY not set. Use Google Maps Pollen API, Ambee, or Tomorrow.io.",
+            "error": None,
             "raw": None,
         }
 
@@ -112,7 +113,6 @@ def _pull_google_pollen(
         "raw": data,
     }
 
-
 def _norm_index(val: Any) -> float | int | None:
     if val is None:
         return None
@@ -120,3 +120,4 @@ def _norm_index(val: Any) -> float | int | None:
         return int(val) if isinstance(val, (int, float)) and val == int(val) else float(val)
     except (TypeError, ValueError):
         return None
+

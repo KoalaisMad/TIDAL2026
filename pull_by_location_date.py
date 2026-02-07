@@ -18,20 +18,67 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import date
 from pathlib import Path
+import requests
 
-# Load .env if present
+# Load .env only (not .env.example)
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    _root = Path(__file__).resolve().parent
+    load_dotenv(_root / ".env")
 except ImportError:
     pass
 
-from data_sources.air_quality import pull_air_quality
-from data_sources.weather import pull_noaa_weather
-from data_sources.pollen import pull_pollen
-from data_sources.time_context import pull_time_context
+import sys
+from pathlib import Path
+
+# Add the asthma-forecaster directory to Python path
+sys.path.append(str(Path(__file__).parent / "asthma-forecaster"))
+
+from apps.data_sources.air_quality import pull_air_quality
+from apps.data_sources.weather import pull_noaa_weather
+from apps.data_sources.pollen import pull_pollen
+from apps.data_sources.time_context import pull_time_context
+
+
+def get_zipcode_from_coordinates(latitude: float, longitude: float) -> str | None:
+    """
+    Get ZIP code from latitude/longitude using reverse geocoding.
+    Uses OpenStreetMap Nominatim API (free, no API key required).
+    """
+    try:
+        url = "https://nominatim.openstreetmap.org/reverse"
+        params = {
+            "lat": latitude,
+            "lon": longitude,
+            "format": "json",
+            "addressdetails": 1,
+            "zoom": 18
+        }
+        headers = {
+            "User-Agent": "TIDAL-Environmental-Data/1.0"
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Try to extract ZIP code from various possible fields
+        address = data.get("address", {})
+        zip_code = (
+            address.get("postcode") or 
+            address.get("postal_code") or 
+            address.get("zipcode")
+        )
+        
+        return zip_code
+        
+    except Exception as e:
+        print(f"Warning: Could not determine ZIP code from coordinates: {e}")
+        return None
 
 
 def pull_all(
@@ -45,7 +92,12 @@ def pull_all(
     """
     Pull all data for the given location and date.
     Provide either (latitude, longitude) or zip_code.
+    If coordinates are provided without zip_code, will attempt to lookup zip_code.
     """
+    # If we have coordinates but no zip code, try to get it
+    if latitude is not None and longitude is not None and zip_code is None:
+        zip_code = get_zipcode_from_coordinates(latitude, longitude)
+    
     out = {
         "location": {
             "latitude": latitude,
@@ -104,6 +156,7 @@ def main():
     parser.add_argument("--date", type=str, required=True, help="Date YYYY-MM-DD")
     parser.add_argument("--no-raw", action="store_true", help="Omit raw API responses from output")
     parser.add_argument("--out", type=str, help="Write JSON to file")
+    parser.add_argument("--mongodb", action="store_true", help="Upsert one daily row into MongoDB (tidal.daily)")
     args = parser.parse_args()
 
     if not args.zip_code and (args.lat is None or args.lon is None):
@@ -121,6 +174,16 @@ def main():
         target_date=target_date,
         include_raw=not args.no_raw,
     )
+
+    if args.mongodb:
+        try:
+            from apps.db.daily_dataset import upsert_daily_row, get_collection
+            r = upsert_daily_row(result)
+            coll = get_collection()
+            db_name, coll_name = coll.database.name, coll.name
+            print(f"MongoDB: upserted 1 row -> database {db_name!r}, collection {coll_name!r}", file=sys.stderr)
+        except Exception as e:
+            print(f"MongoDB upsert failed: {e}", file=sys.stderr)
 
     json_str = json.dumps(result, indent=2)
     if args.out:
