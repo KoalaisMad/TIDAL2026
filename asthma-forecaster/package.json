@@ -1,0 +1,11 @@
+{
+  "name": "asthma-forecaster",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm exec concurrently \"pnpm --filter web dev\" \"powershell -ExecutionPolicy Bypass -File apps/ml/run.ps1\""
+  }
+}

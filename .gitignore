@@ -1,0 +1,27 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+.pnpm-store
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build / IDE
+.next/
+out/
+.idea/
+.vscode/
+*.tsbuildinfo
+next-env.d.ts
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
