@@ -1,7 +1,7 @@
+import { AsthmaMonitorScreen } from "@/components/asthma-monitor/AsthmaMonitorScreen"
+
 export default function Home() {
   return (
-    <main>
-      <h1>Asthma Forecaster</h1>
-    </main>
+    <AsthmaMonitorScreen />
   );
 }
