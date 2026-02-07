@@ -22,8 +22,8 @@ export function RiskGauge({ value, max = 10, label, className }: RiskGaugeProps)
   const c = 2 * Math.PI * r
 
   // top half-ish arc, matching the screenshot
-  const startAngle = 225
-  const sweepAngle = 270
+  const startAngle = 180
+  const sweepAngle = 180
   const progress = clamp(value / max, 0, 1)
   const dash = (sweepAngle / 360) * c
   const dashOffset = dash * (1 - progress)
