@@ -5,7 +5,7 @@ const RATE_LIMIT_MAX = 10; // max requests per window
 const rateLimitMap = new Map();
 
 // --- Simple API key check (optional, for demo) ---
-const VALID_API_KEY = process.env.RECOMMENDATIONS_API_KEY || "demo-key";
+const VALID_API_KEY = process.env.GEMINI_KEY || "demo-key";
 import { DUMMY_RECOMMENDATIONS, isIsoDate } from "../_mock";
 import { getGeminiRecommendations } from "@/lib/gemini";
 import { getUserByEmail } from "@/lib/users";
@@ -27,21 +27,14 @@ export async function GET(request: Request) {
 
   // --- API key check (optional) ---
   const apiKey = request.headers.get("x-api-key");
+  console.log(VALID_API_KEY, apiKey);
   if (VALID_API_KEY && apiKey !== VALID_API_KEY) {
     return NextResponse.json({ error: "Unauthorized: invalid API key." }, { status: 401 });
   }
   const url = new URL(request.url);
-  const date = url.searchParams.get("date");
   const riskScoreRaw = url.searchParams.get("riskScore");
   const email = url.searchParams.get("email");
-  const activeRiskFactorsRaw = url.searchParams.get("activeRiskFactors");
-
-  if (!isIsoDate(date)) {
-    return NextResponse.json(
-      { error: "Missing or invalid `date` (expected YYYY-MM-DD)." },
-      { status: 400 }
-    );
-  }
+  const apiDailyRaw = url.searchParams.get("apiDaily");
 
   // Parse and validate riskScore (should be 0-5)
   const riskScore = riskScoreRaw !== null ? parseFloat(riskScoreRaw) : NaN;
@@ -62,17 +55,13 @@ export async function GET(request: Request) {
     riskLevel = "high";
   }
 
-  // Parse activeRiskFactors (expecting a JSON array or comma-separated string)
-  let activeRiskFactors: string[] = [];
-  if (activeRiskFactorsRaw) {
+  // Parse apiDaily (expecting a JSON object)
+  let apiDaily: Record<string, unknown> | null = null;
+  if (apiDailyRaw) {
     try {
-      if (activeRiskFactorsRaw.trim().startsWith("[") && activeRiskFactorsRaw.trim().endsWith("]")) {
-        activeRiskFactors = JSON.parse(activeRiskFactorsRaw);
-      } else {
-        activeRiskFactors = activeRiskFactorsRaw.split(",").map(f => f.trim()).filter(Boolean);
-      }
+      apiDaily = JSON.parse(apiDailyRaw);
     } catch {
-      activeRiskFactors = [];
+      apiDaily = null;
     }
   }
 
@@ -84,9 +73,9 @@ export async function GET(request: Request) {
   }
 
   // Compose prompt for Gemini
-  let prompt = `Generate 3 asthma recommendations for a user with risk level '${riskLevel}' (numeric risk score: ${riskScore}) on ${date}.`;
-  if (activeRiskFactors.length > 0) {
-    prompt += ` The user's active risk factors are: ${JSON.stringify(activeRiskFactors)}.`;
+  let prompt = `Generate 3 asthma recommendations for a user with risk level '${riskLevel}' (numeric risk score: ${riskScore}).`;
+  if (apiDaily) {
+    prompt += ` The user's daily context is: ${JSON.stringify(apiDaily)}.`;
   }
   if (userProfile) {
     prompt += ` The user's profile is: ${JSON.stringify(userProfile)}.`;
@@ -104,10 +93,10 @@ export async function GET(request: Request) {
         recommendations = parsed;
       }
     } catch {}
-    return NextResponse.json({ date, riskScore, riskLevel, activeRiskFactors, recommendations });
+    return NextResponse.json({ riskScore, riskLevel, apiDaily, recommendations });
   } catch (err) {
     // Fallback to static recommendations
-    return NextResponse.json({ date, riskScore, riskLevel, activeRiskFactors, recommendations: DUMMY_RECOMMENDATIONS });
+    return NextResponse.json({ riskScore, riskLevel, apiDaily, recommendations: DUMMY_RECOMMENDATIONS });
   }
 }
 
