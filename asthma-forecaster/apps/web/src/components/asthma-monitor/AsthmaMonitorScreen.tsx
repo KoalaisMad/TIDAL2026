@@ -106,7 +106,7 @@ export function AsthmaMonitorScreen() {
     <div className={layout.pageBg}>
       <main className={layout.container}>
         <div className={cn("flex flex-col", spacing.sectionGap)}>
-          <Header title="Asthma Monitor" />
+          <Header title="Breathe Well" />
 
           <RiskTabs value={tab} onValueChange={setTab} />
 

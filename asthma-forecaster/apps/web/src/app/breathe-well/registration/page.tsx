@@ -38,7 +38,7 @@ export default function RegistrationPage() {
     console.log("Registration data:", formData)
     
     // Navigate to the main app
-    router.push("/asthma-monitor/environmental")
+    router.push("/breathe-well/environmental")
   }
 
   return (

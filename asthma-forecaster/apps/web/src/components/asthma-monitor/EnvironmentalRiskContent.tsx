@@ -122,7 +122,7 @@ export function EnvironmentalRiskContent() {
           size="pill"
           className="w-full md:w-fit md:px-12"
           onClick={() => {
-            router.push("/asthma-monitor/personalized")
+            router.push("/breathe-well/personalized")
           }}
         >
           Get Personalized Risk

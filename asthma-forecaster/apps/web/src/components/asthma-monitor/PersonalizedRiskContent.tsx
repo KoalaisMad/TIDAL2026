@@ -31,7 +31,7 @@ export function PersonalizedRiskContent() {
           variant="outline"
           className="w-full md:w-fit md:px-12"
           onClick={() => {
-            router.push("/asthma-monitor/environmental")
+            router.push("/breathe-well/environmental")
           }}
         >
           Back to Environmental Risk
