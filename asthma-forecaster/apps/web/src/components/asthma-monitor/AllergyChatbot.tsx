@@ -215,7 +215,7 @@ export function AllergyChatbot({
       <CardHeader className="pb-3">
         <CardTitle className={cn("flex items-center gap-2 text-lg", compact && "text-base")}>
           <MessageCircle className="size-5 text-primary" aria-hidden />
-          Allergy & asthma assistant
+          Wheeze-Wise Assistant
         </CardTitle>
         {!compact && (
           <p className="text-muted-foreground text-sm">
@@ -271,7 +271,6 @@ export function AllergyChatbot({
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon"
                       className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
                       onClick={() => playReply(msg.content, i)}
                       disabled={playingIndex !== null}
@@ -307,8 +306,7 @@ export function AllergyChatbot({
         <div className="flex gap-2">
           <Button
             type="button"
-            variant={isRecording ? "destructive" : "outline"}
-            size="icon"
+            variant={isRecording ? "secondary" : "outline"}
             className="h-12 w-12 shrink-0 rounded-2xl"
             onClick={toggleRecording}
             disabled={loading}

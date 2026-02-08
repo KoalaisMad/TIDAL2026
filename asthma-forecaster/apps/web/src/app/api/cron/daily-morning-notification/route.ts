@@ -12,7 +12,7 @@ function toLocalDateStr(d: Date): string {
 /**
  * GET /api/cron/daily-morning-notification
  * Intended to run daily at 8:00 AM (schedule via Vercel Cron, cron-job.org, or similar).
- * Sends a morning email to all users with a link to the Breathe Well dashboard.
+ * Sends a morning email to all users with a link to the Wheeze-Wise dashboard.
  * Secured by CRON_SECRET: pass ?secret=CRON_SECRET or Authorization: Bearer CRON_SECRET.
  */
 export async function GET(request: Request) {

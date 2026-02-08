@@ -82,7 +82,7 @@ export default function AsthmaMonitorLayout({
     <div className={layout.pageBg}>
       <main className={layout.container}>
         <div className={cn("flex flex-col", spacing.sectionGap)}>
-          <Header title="Breathe Well" />
+          <Header title="Wheeze-Wise" />
           <RiskTabs value={currentTab} onValueChange={handleTabChange} />
           {children}
         </div>

@@ -4,8 +4,8 @@ import SessionProvider from "@/components/providers/SessionProvider"
 import FloatingMascot from "@/components/FloatingMascot"
 
 export const metadata: Metadata = {
-  title: "Asthma Monitor",
-  description: "Mobile-first asthma risk dashboard",
+  title: "Wheeze-Wise",
+  description: "Smart asthma risk monitoring and personalized insights",
 }
 
 export const viewport: Viewport = {

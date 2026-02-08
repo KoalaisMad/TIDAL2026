@@ -28,7 +28,7 @@ function buildSystemInstruction(weekContext: {
   start?: string
   days: WeekDayContext[]
 } | null): string {
-  const base = `You are a helpful allergy and asthma assistant for the Breathe Well app. You help users understand their allergy and asthma risk for the coming days and how to respond. Be concise, friendly, and practical. When you give advice, base it on the forecast data provided when available. If no data is provided, say so and give general tips. Do not make up specific numbers or dates; only use the data you are given.`
+  const base = `You are a helpful allergy and asthma assistant for the Wheeze-Wise app. You help users understand their allergy and asthma risk for the coming days and how to respond. Be concise, friendly, and practical. When you give advice, base it on the forecast data provided when available. If no data is provided, say so and give general tips. Do not make up specific numbers or dates; only use the data you are given.`
   if (!weekContext?.days?.length) {
     return `${base}\n\nNo week forecast data was provided. Suggest the user check their location or try again to load the forecast, and offer general allergy/asthma tips for the week.`
   }

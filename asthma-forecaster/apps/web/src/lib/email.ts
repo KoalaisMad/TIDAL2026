@@ -1,7 +1,7 @@
 import { Resend } from "resend"
 
 const resendApiKey = process.env.RESEND_API_KEY
-const fromEmail = process.env.EMAIL_FROM || "Breathe Well <onboarding@resend.dev>"
+const fromEmail = process.env.EMAIL_FROM || "Wheeze-Wise <onboarding@resend.dev>"
 
 /**
  * Send a high-risk asthma alert email for the next day.
@@ -23,13 +23,13 @@ export async function sendHighRiskAlert(
   const { error } = await resend.emails.send({
     from: fromEmail,
     to: [to],
-    subject: `Breathe Well: ${riskLabel} asthma risk for ${dateLabel}`,
+    subject: `Wheeze-Wise: ${riskLabel} asthma risk for ${dateLabel}`,
     html: `
       <p>Hi ${displayName},</p>
-      <p>Your Breathe Well asthma risk forecast shows <strong>${riskLabel} risk</strong> for ${dateLabel}.</p>
+      <p>Your Wheeze-Wise asthma risk forecast shows <strong>${riskLabel} risk</strong> for ${dateLabel}.</p>
       <p>Consider limiting prolonged outdoor activity and keeping your rescue inhaler handy.</p>
-      <p>View your full forecast: <a href="${process.env.NEXTAUTH_URL || "http://127.0.0.1:3000"}/breathe-well/environmental">Breathe Well dashboard</a></p>
-      <p>— Breathe Well</p>
+      <p>View your full forecast: <a href="${process.env.NEXTAUTH_URL || "http://127.0.0.1:3000"}/breathe-well/environmental">Wheeze-Wise dashboard</a></p>
+      <p>— Wheeze-Wise</p>
     `,
   })
 
@@ -57,12 +57,12 @@ export async function sendDailyMorningNotification(
   const { error } = await resend.emails.send({
     from: fromEmail,
     to: [to],
-    subject: `Breathe Well: Your daily asthma forecast for ${dateLabel}`,
+    subject: `Wheeze-Wise: Your daily asthma forecast for ${dateLabel}`,
     html: `
       <p>Good morning, ${displayName},</p>
-      <p>Here’s your daily reminder to check your asthma risk forecast.</p>
-      <p>View your forecast and tips: <a href="${dashboardUrl}">Breathe Well dashboard</a></p>
-      <p>— Breathe Well</p>
+      <p>Here's your daily reminder to check your asthma risk forecast.</p>
+      <p>View your forecast and tips: <a href="${dashboardUrl}">Wheeze-Wise dashboard</a></p>
+      <p>— Wheeze-Wise</p>
     `,
   })
 

@@ -1,6 +1,6 @@
 # Google OAuth 2.0 Setup Guide
 
-This guide will help you set up Google OAuth 2.0 for your Asthma Monitor application.
+This guide will help you set up Google OAuth 2.0 for your Wheeze-Wise application.
 
 ## 1. Create Google OAuth Credentials
 
