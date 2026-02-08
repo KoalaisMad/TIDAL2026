@@ -6,7 +6,12 @@ import { useSearchParams } from "next/navigation"
 
 function SignInContent() {
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get("callbackUrl") || "/breathe-well"
+  const callbackPath = searchParams.get("callbackUrl") || "/breathe-well"
+  // Use absolute URL so NextAuth reliably redirects here after OAuth
+  const callbackUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}${callbackPath.startsWith("/") ? callbackPath : `/${callbackPath}`}`
+      : callbackPath
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">

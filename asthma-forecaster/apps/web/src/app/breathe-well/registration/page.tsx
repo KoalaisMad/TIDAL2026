@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -18,27 +19,55 @@ import { cn } from "@/lib/utils"
 
 export default function RegistrationPage() {
   const router = useRouter()
+  const { data: session, status } = useSession()
   const [formData, setFormData] = React.useState({
     name: "",
     height: "",
     weight: "",
     gender: "",
   })
+  const [submitting, setSubmitting] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Basic validation
-    if (!formData.name.trim()) {
-      alert("Please enter your name")
+  // Require auth; prefill name from session
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/auth/signin?callbackUrl=" + encodeURIComponent("/breathe-well/registration"))
       return
     }
+    if (status === "authenticated" && session?.user?.name && !formData.name) {
+      setFormData((prev) => ({ ...prev, name: session.user.name ?? "" }))
+    }
+  }, [status, session?.user?.name, router, formData.name])
 
-    // TODO: Save user data to backend/localStorage
-    console.log("Registration data:", formData)
-    
-    // Navigate to the main app
-    router.push("/breathe-well/environmental")
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.name.trim()) {
+      setError("Please enter your name")
+      return
+    }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/users/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          height: formData.height.trim() || undefined,
+          weight: formData.weight.trim() || undefined,
+          gender: formData.gender || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? "Registration failed")
+      }
+      router.push("/breathe-well/environmental")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed")
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -47,6 +76,11 @@ export default function RegistrationPage() {
         <div className="flex min-h-[calc(100dvh-8rem)] items-center justify-center py-8">
           <Card className="w-full max-w-md">
             <form onSubmit={handleSubmit} className="p-8 space-y-8">
+              {error && (
+                <p className="text-sm text-destructive" role="alert">
+                  {error}
+                </p>
+              )}
               {/* Header Section */}
               <div className="space-y-2">
                 <p className="text-sm font-light text-muted-foreground">
@@ -141,7 +175,7 @@ export default function RegistrationPage() {
                   </label>
                   <Select
                     value={formData.gender}
-                    onValueChange={(value) =>
+                    onValueChange={(value: string) =>
                       setFormData({ ...formData, gender: value })
                     }
                   >
@@ -165,8 +199,9 @@ export default function RegistrationPage() {
                 type="submit"
                 size="pill"
                 className="w-full"
+                disabled={submitting}
               >
-                Create Account
+                {submitting ? "Saving…" : "Create Account"}
               </Button>
             </form>
           </Card>
