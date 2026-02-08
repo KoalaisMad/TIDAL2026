@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
 
 export default function Home() {
-  redirect("/asthma-monitor/environmental")
+  redirect("/breathe-well/environmental")
 }

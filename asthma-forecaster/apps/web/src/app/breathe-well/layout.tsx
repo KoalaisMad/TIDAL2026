@@ -23,9 +23,9 @@ export default function AsthmaMonitorLayout({
 
   const handleTabChange = (tab: "environmental" | "personalized") => {
     if (tab === "environmental") {
-      router.push("/asthma-monitor/environmental")
+      router.push("/breathe-well/environmental")
     } else {
-      router.push("/asthma-monitor/personalized")
+      router.push("/breathe-well/personalized")
     }
   }
 
@@ -33,7 +33,7 @@ export default function AsthmaMonitorLayout({
     <div className={layout.pageBg}>
       <main className={layout.container}>
         <div className={cn("flex flex-col", spacing.sectionGap)}>
-          <Header title="Asthma Monitor" />
+          <Header title="Breathe Well" />
           <RiskTabs value={currentTab} onValueChange={handleTabChange} />
           {children}
         </div>

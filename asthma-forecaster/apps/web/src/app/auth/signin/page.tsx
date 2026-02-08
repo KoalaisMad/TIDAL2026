@@ -12,7 +12,7 @@ export default function SignIn() {
       <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-8 shadow-lg">
         <div className="text-center">
           <h2 className="text-3xl font-bold text-gray-900">
-            Welcome to Asthma Monitor
+            Welcome to Breathe Well
           </h2>
           <p className="mt-2 text-sm text-gray-600">
             Sign in to access your personalized asthma risk dashboard
