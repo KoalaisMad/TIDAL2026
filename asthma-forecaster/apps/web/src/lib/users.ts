@@ -93,3 +93,19 @@ export async function addCheckIn(
     }
   )
 }
+
+/** All users with a valid email (for daily morning notifications). */
+export async function getAllUsersWithEmail(): Promise<
+  Array<{ email: string; name?: string }>
+> {
+  const db = await getDb()
+  const cursor = db
+    .collection(USERS_COLLECTION)
+    .find({ email: { $exists: true, $ne: "" } })
+    .project({ email: 1, name: 1 })
+  const docs = await cursor.toArray()
+  return docs.map((d) => ({
+    email: String(d.email ?? ""),
+    name: d.name != null ? String(d.name) : undefined,
+  }))
+}

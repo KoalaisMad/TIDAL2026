@@ -36,3 +36,36 @@ export async function sendHighRiskAlert(
   if (error) return { ok: false, error: String(error) }
   return { ok: true }
 }
+
+/**
+ * Send a daily morning notification (e.g. 8 AM) to a user.
+ * No-op if RESEND_API_KEY is not set.
+ */
+export async function sendDailyMorningNotification(
+  to: string,
+  options: { name?: string; date?: string }
+): Promise<{ ok: boolean; error?: string }> {
+  if (!resendApiKey?.trim()) {
+    return { ok: false, error: "RESEND_API_KEY not configured" }
+  }
+
+  const displayName = options.name?.trim() || "there"
+  const dateLabel = options.date ?? new Date().toISOString().slice(0, 10)
+  const dashboardUrl = `${process.env.NEXTAUTH_URL || "http://127.0.0.1:3000"}/breathe-well/environmental`
+
+  const resend = new Resend(resendApiKey)
+  const { error } = await resend.emails.send({
+    from: fromEmail,
+    to: [to],
+    subject: `Breathe Well: Your daily asthma forecast for ${dateLabel}`,
+    html: `
+      <p>Good morning, ${displayName},</p>
+      <p>Here’s your daily reminder to check your asthma risk forecast.</p>
+      <p>View your forecast and tips: <a href="${dashboardUrl}">Breathe Well dashboard</a></p>
+      <p>— Breathe Well</p>
+    `,
+  })
+
+  if (error) return { ok: false, error: String(error) }
+  return { ok: true }
+}

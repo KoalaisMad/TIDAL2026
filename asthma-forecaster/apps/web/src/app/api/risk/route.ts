@@ -21,39 +21,45 @@ function getTidalRoot(): string {
     path.resolve(cwd, "..", "..", ".."),
     path.resolve(cwd, "..", "..", "..", ".."),
     path.join(cwd, "TIDAL2026"),
+    path.resolve(cwd, "..", "..", "..", "TIDAL2026"),
+    path.resolve(cwd, "..", "..", "TIDAL2026"),
   ]
+  const hasTidal = (dir: string) =>
+    fs.existsSync(path.join(dir, "risk_model_general.joblib")) ||
+    fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_risk.py")) ||
+    fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_flare.py")) ||
+    fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "D A T A", "flare_model.joblib"))
   for (const dir of candidates) {
-    if (
-      fs.existsSync(path.join(dir, "risk_model_general.joblib")) ||
-      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_risk.py")) ||
-      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_flare.py")) ||
-      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "D A T A", "flare_model.joblib"))
-    ) {
-      return dir
-    }
+    if (hasTidal(dir)) return dir
+    const tidal2026 = path.join(dir, "TIDAL2026")
+    if (fs.existsSync(tidal2026) && hasTidal(tidal2026)) return tidal2026
   }
   return path.resolve(cwd, "..", "..", "..")
 }
 
-/** Load .env from TIDAL root so spawned Python gets MONGODB_URI etc. */
+/** Load .env from TIDAL root and web cwd so spawned Python gets MONGODB_URI etc. */
 function loadTidalEnv(tidalRoot: string): void {
-  const envPath = path.join(tidalRoot, ".env")
-  if (!fs.existsSync(envPath)) return
-  try {
-    const content = fs.readFileSync(envPath, "utf-8")
-    for (const line of content.split("\n")) {
-      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
-      if (m) {
-        const key = m[1]
-        let val = m[2].trim()
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
-          val = val.slice(1, -1)
-        if (!process.env[key]) process.env[key] = val
+  const loadFrom = (envPath: string) => {
+    if (!fs.existsSync(envPath)) return
+    try {
+      const content = fs.readFileSync(envPath, "utf-8")
+      for (const line of content.split("\n")) {
+        const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
+        if (m) {
+          const key = m[1]
+          let val = m[2].trim()
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
+            val = val.slice(1, -1)
+          if (!process.env[key]) process.env[key] = val
+        }
       }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
+  loadFrom(path.join(tidalRoot, ".env"))
+  loadFrom(path.join(process.cwd(), ".env"))
+  loadFrom(path.join(process.cwd(), ".env.local"))
 }
 
 function getPythonCandidates(tidalRoot: string): string[] {

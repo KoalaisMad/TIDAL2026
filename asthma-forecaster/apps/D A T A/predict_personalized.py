@@ -152,6 +152,41 @@ def enrich_dataset(env_df: pd.DataFrame, prof: pd.DataFrame, checkins: pd.DataFr
     return df
 
 
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Same as pgood.add_time_features so prediction features match training."""
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").reset_index(drop=True)
+    if {"temp_max_c", "temp_min_c"}.issubset(df.columns):
+        df["temp_swing"] = df["temp_max_c"] - df["temp_min_c"]
+    elif {"temp_max", "temp_min"}.issubset(df.columns):
+        df["temp_swing"] = df["temp_max"] - df["temp_min"]
+    pm = "PM2_5_mean" if "PM2_5_mean" in df.columns else "pm25_mean"
+    aqi = "AQI" if "AQI" in df.columns else "aqi"
+    if pm in df.columns:
+        df["pm25_delta"] = df[pm].diff().fillna(0)
+        df["pm25_roll3_mean"] = df[pm].rolling(3, min_periods=1).mean().shift(1).fillna(0)
+        df["pm25_roll7_mean"] = df[pm].rolling(7, min_periods=1).mean().shift(1).fillna(0)
+        df["pm25_lag1"] = df[pm].shift(1).fillna(0)
+    if aqi in df.columns:
+        df["aqi_roll3_mean"] = df[aqi].rolling(3, min_periods=1).mean().shift(1).fillna(0)
+        df["aqi_roll7_mean"] = df[aqi].rolling(7, min_periods=1).mean().shift(1).fillna(0)
+        df["aqi_lag1"] = df[aqi].shift(1).fillna(0)
+    if "pollen_total" in df.columns:
+        df["pollen_total_lag1"] = df["pollen_total"].shift(1).fillna(0)
+    elif {"pollen_tree", "pollen_grass", "pollen_weed"}.intersection(df.columns):
+        pollen_cols = [c for c in ["pollen_tree", "pollen_grass", "pollen_weed"] if c in df.columns]
+        df["pollen_total"] = df[pollen_cols].fillna(0).sum(axis=1)
+        df["pollen_total_lag1"] = df["pollen_total"].shift(1).fillna(0)
+    hum = "humidity" if "humidity" in df.columns else "humidity_mean"
+    wnd = "wind" if "wind" in df.columns else "wind_speed_kmh"
+    if pm in df.columns and hum in df.columns:
+        df["pm25_x_humidity"] = df[pm] * df[hum]
+    if "pollen_total" in df.columns and wnd in df.columns:
+        df["pollen_x_wind"] = df["pollen_total"] * df[wnd]
+    return df
+
+
 def _mongo_uri() -> str:
     uri = os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URI", "mongodb://localhost:27017")
     if "@" in uri and "://" in uri:
@@ -190,6 +225,41 @@ def load_env_from_mongo(client: MongoClient, start_date: date, end_date: date) -
     return df
 
 
+def _synthetic_env_days(lat: float, lon: float, start_date: date, end_date: date) -> pd.DataFrame:
+    """Build synthetic env DataFrame when Open-Meteo is unavailable (same shape as fetch_forecast_env)."""
+    from datetime import timedelta
+    rows = []
+    d = start_date
+    while d <= end_date:
+        j = (d.toordinal() % 7) / 7.0
+        rows.append({
+            "date": pd.Timestamp(d),
+            "temp_min": 10.0 + 3 * j,
+            "temp_max": 22.0 + 5 * j,
+            "humidity": 55.0 + 20 * j,
+            "wind": 5.0 + 5 * j,
+            "rain": 0.0,
+            "pressure": 1013.0,
+            "PM2_5_mean": 10.0 + 8 * j,
+            "PM2_5_max": (10.0 + 8 * j) * 1.4,
+            "AQI": 40.0 + 30 * j,
+        })
+        d += timedelta(days=1)
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
+    df["day_of_week"] = df["date"].dt.day_name()
+    df["month"] = df["date"].dt.month
+    def season(m):
+        if m in (12, 1, 2): return "winter"
+        if m in (3, 4, 5): return "spring"
+        if m in (6, 7, 8): return "summer"
+        return "fall"
+    df["season"] = df["month"].apply(season)
+    df["holiday_flag"] = False
+    df["locationid"] = f"{lat:.2f}-{lon:.2f}"
+    return df
+
+
 def fetch_forecast_env(lat: float, lon: float, start_date: date, end_date: date) -> pd.DataFrame:
     """Fetch weather + air quality for date range from Open-Meteo (archive + forecast)."""
     start_str = start_date.isoformat()
@@ -205,86 +275,92 @@ def fetch_forecast_env(lat: float, lon: float, start_date: date, end_date: date)
             "daily": "temperature_2m_min,temperature_2m_max,relative_humidity_mean_2m,windspeed_10m_mean,precipitation_sum",
             "timezone": "UTC",
         }
-        r = requests.get(url, params=params, timeout=30)
-        r.raise_for_status()
-        j = r.json()
-        daily = j.get("daily", {})
-        df = pd.DataFrame({
-            "date": daily.get("time", []),
-            "temp_min": daily.get("temperature_2m_min", []),
-            "temp_max": daily.get("temperature_2m_max", []),
-            "humidity": daily.get("relative_humidity_mean_2m", [np.nan] * len(daily.get("time", []))),
-            "wind": daily.get("windspeed_10m_mean", []),
-            "rain": daily.get("precipitation_sum", []),
-        })
-        # Air quality forecast (same API can return pm2_5 in some setups; fallback)
-        aq_url = "https://air-quality.api.open-meteo.com/v1/air-quality"
-        aq_params = {"latitude": lat, "longitude": lon, "start_date": start_str, "end_date": end_str, "timezone": "UTC"}
         try:
-            aq = requests.get(aq_url, params=aq_params, timeout=30)
-            if aq.ok:
-                aq_j = aq.json()
-                aq_daily = aq_j.get("daily", {})
-                df["PM2_5_mean"] = aq_daily.get("pm2_5", [np.nan] * len(df))[:len(df)]
-                df["PM2_5_max"] = df["PM2_5_mean"]
-                df["AQI"] = aq_daily.get("us_aqi", [np.nan] * len(df))[:len(df)]
-            else:
-                df["PM2_5_mean"] = 10.0
-                df["PM2_5_max"] = 10.0
-                df["AQI"] = np.nan
-        except Exception:
-            df["PM2_5_mean"] = 10.0
-            df["PM2_5_max"] = 10.0
-            df["AQI"] = np.nan
-        df["pressure"] = 1013.0
-    else:
-        # Archive for past dates
-        url = "https://archive-api.open-meteo.com/v1/archive"
-        params = {
-            "latitude": lat, "longitude": lon,
-            "start_date": start_str, "end_date": end_str,
-            "daily": "temperature_2m_min,temperature_2m_max,relative_humidity_mean_2m,windspeed_10m_mean,precipitation_sum,surface_pressure_mean",
-            "timezone": "UTC",
-        }
-        r = requests.get(url, params=params, timeout=60)
-        r.raise_for_status()
-        j = r.json()
-        daily = j.get("daily", {})
-        df = pd.DataFrame({
-            "date": daily.get("time", []),
-            "temp_min": daily.get("temperature_2m_min", []),
-            "temp_max": daily.get("temperature_2m_max", []),
-            "humidity": daily.get("relative_humidity_mean_2m", []),
-            "wind": daily.get("windspeed_10m_mean", []),
-            "rain": daily.get("precipitation_sum", []),
-            "pressure": daily.get("surface_pressure_mean", [1013] * len(daily.get("time", []))),
-        })
-        aq_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
-        aq_params = {"latitude": lat, "longitude": lon, "start_date": start_str, "end_date": end_str, "hourly": "pm2_5", "timezone": "UTC"}
-        try:
-            aq = requests.get(aq_url, params=aq_params, timeout=60)
-            if aq.ok:
-                aq_j = aq.json()
-                h = aq_j.get("hourly", {})
-                pm = h.get("pm2_5", [])
-                if pm:
-                    n_days = len(df)
-                    day_len = len(pm) // n_days if n_days else 24
-                    means = [np.nanmean(pm[i*day_len:(i+1)*day_len]) for i in range(n_days)]
-                    df["PM2_5_mean"] = means[:len(df)]
+            r = requests.get(url, params=params, timeout=30)
+            r.raise_for_status()
+            j = r.json()
+            daily = j.get("daily", {})
+            df = pd.DataFrame({
+                "date": daily.get("time", []),
+                "temp_min": daily.get("temperature_2m_min", []),
+                "temp_max": daily.get("temperature_2m_max", []),
+                "humidity": daily.get("relative_humidity_mean_2m", [np.nan] * len(daily.get("time", []))),
+                "wind": daily.get("windspeed_10m_mean", []),
+                "rain": daily.get("precipitation_sum", []),
+            })
+            # Air quality forecast (same API can return pm2_5 in some setups; fallback)
+            aq_url = "https://air-quality.api.open-meteo.com/v1/air-quality"
+            aq_params = {"latitude": lat, "longitude": lon, "start_date": start_str, "end_date": end_str, "timezone": "UTC"}
+            try:
+                aq = requests.get(aq_url, params=aq_params, timeout=30)
+                if aq.ok:
+                    aq_j = aq.json()
+                    aq_daily = aq_j.get("daily", {})
+                    df["PM2_5_mean"] = aq_daily.get("pm2_5", [np.nan] * len(df))[:len(df)]
                     df["PM2_5_max"] = df["PM2_5_mean"]
+                    df["AQI"] = aq_daily.get("us_aqi", [np.nan] * len(df))[:len(df)]
                 else:
                     df["PM2_5_mean"] = 10.0
                     df["PM2_5_max"] = 10.0
+                    df["AQI"] = np.nan
+            except Exception:
+                df["PM2_5_mean"] = 10.0
+                df["PM2_5_max"] = 10.0
                 df["AQI"] = np.nan
-            else:
+            df["pressure"] = 1013.0
+        except Exception:
+            return _synthetic_env_days(lat, lon, start_date, end_date)
+    else:
+        # Archive for past dates
+        try:
+            url = "https://archive-api.open-meteo.com/v1/archive"
+            params = {
+                "latitude": lat, "longitude": lon,
+                "start_date": start_str, "end_date": end_str,
+                "daily": "temperature_2m_min,temperature_2m_max,relative_humidity_mean_2m,windspeed_10m_mean,precipitation_sum,surface_pressure_mean",
+                "timezone": "UTC",
+            }
+            r = requests.get(url, params=params, timeout=60)
+            r.raise_for_status()
+            j = r.json()
+            daily = j.get("daily", {})
+            df = pd.DataFrame({
+                "date": daily.get("time", []),
+                "temp_min": daily.get("temperature_2m_min", []),
+                "temp_max": daily.get("temperature_2m_max", []),
+                "humidity": daily.get("relative_humidity_mean_2m", []),
+                "wind": daily.get("windspeed_10m_mean", []),
+                "rain": daily.get("precipitation_sum", []),
+                "pressure": daily.get("surface_pressure_mean", [1013] * len(daily.get("time", []))),
+            })
+            aq_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+            aq_params = {"latitude": lat, "longitude": lon, "start_date": start_str, "end_date": end_str, "hourly": "pm2_5", "timezone": "UTC"}
+            try:
+                aq = requests.get(aq_url, params=aq_params, timeout=60)
+                if aq.ok:
+                    aq_j = aq.json()
+                    h = aq_j.get("hourly", {})
+                    pm = h.get("pm2_5", [])
+                    if pm:
+                        n_days = len(df)
+                        day_len = len(pm) // n_days if n_days else 24
+                        means = [np.nanmean(pm[i*day_len:(i+1)*day_len]) for i in range(n_days)]
+                        df["PM2_5_mean"] = means[:len(df)]
+                        df["PM2_5_max"] = df["PM2_5_mean"]
+                    else:
+                        df["PM2_5_mean"] = 10.0
+                        df["PM2_5_max"] = 10.0
+                        df["AQI"] = np.nan
+                else:
+                    df["PM2_5_mean"] = 10.0
+                    df["PM2_5_max"] = 10.0
+                    df["AQI"] = np.nan
+            except Exception:
                 df["PM2_5_mean"] = 10.0
                 df["PM2_5_max"] = 10.0
                 df["AQI"] = np.nan
         except Exception:
-            df["PM2_5_mean"] = 10.0
-            df["PM2_5_max"] = 10.0
-            df["AQI"] = np.nan
+            return _synthetic_env_days(lat, lon, start_date, end_date)
 
     df["date"] = pd.to_datetime(df["date"])
     df["day_of_week"] = df["date"].dt.day_name()
@@ -420,7 +496,8 @@ def get_env_next_n_days(client: MongoClient, n_days: int, *, lat: float = 37.77,
 def main() -> int:
     parser = argparse.ArgumentParser(description="Predict risk/flare for MongoDB users for the next 7 days")
     _script_dir = Path(__file__).resolve().parent
-    parser.add_argument("--model", default=str(_script_dir / "flare_model.joblib"), help="Path to flare_model.joblib")
+    parser.add_argument("--model", default=str(_script_dir / "personalized_flare_model.joblib"),
+                        help="Path to personalized model (from pgood.py). Falls back to flare_model.joblib if missing.")
     parser.add_argument("--out", default="-", help="Output JSON file (default: stdout)")
     parser.add_argument("--days", type=int, default=7, help="Number of days to predict (default: 7)")
     parser.add_argument("--lat", type=float, default=37.77, help="Latitude for env if fetching forecast")
@@ -429,8 +506,12 @@ def main() -> int:
 
     model_path = Path(args.model)
     if not model_path.exists():
-        print(f"Model not found: {model_path}", file=sys.stderr)
-        return 1
+        fallback = _script_dir / "flare_model.joblib"
+        if fallback.exists():
+            model_path = fallback
+        else:
+            print(f"Model not found: {model_path}", file=sys.stderr)
+            return 1
 
     try:
         bundle = joblib.load(model_path)
@@ -466,13 +547,13 @@ def main() -> int:
         return 1
 
     env_df["date"] = pd.to_datetime(env_df["date"])
+    env_df = add_time_features(env_df)
     dates = env_df["date"].drop_duplicates().sort_values().tolist()
     today_dt = pd.Timestamp(date.today())
-    future_dates = [d for d in dates if d > today_dt]
+    # Include today and next 6 days (7 days total) to match UI "Next 7 days" (today + next 6)
+    future_dates = sorted([d for d in dates if d >= today_dt])[:n_days]
     if not future_dates:
-        future_dates = [d for d in dates if d >= today_dt]
-    if not future_dates:
-        future_dates = dates
+        future_dates = dates[:n_days] if len(dates) >= n_days else dates
     date_strs = [d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10] for d in future_dates]
 
     # Try cache first: if we have predictions for all (user_id, date), return them
@@ -499,9 +580,13 @@ def main() -> int:
     pred_env = pd.DataFrame(rows)
 
     df = enrich_dataset(pred_env, prof, checkins)
-    df_future = df[df["date"] > today_dt].copy()
-    if df_future.empty:
-        df_future = df[df["date"] >= today_dt].copy()
+    # Predict for today and next 6 days (7 days total), matching the UI week strip
+    df_future = df[df["date"] >= today_dt].copy()
+    if not df_future.empty and date_strs:
+        # Keep only the 7 days we output (today..today+6)
+        future_dates_strs = set(date_strs)
+        df_future["_d"] = df_future["date"].apply(lambda x: x.strftime("%Y-%m-%d") if hasattr(x, "strftime") else str(x)[:10])
+        df_future = df_future[df_future["_d"].isin(future_dates_strs)].drop(columns=["_d"]).sort_values(["user_id", "date"]).reset_index(drop=True)
     if df_future.empty:
         df_future = df.tail(len(user_ids) * n_days)
 
@@ -516,7 +601,9 @@ def main() -> int:
             X = X.copy()
             X[c] = X[c].astype(str).fillna("")
     try:
-        preds = pipeline.predict(X)
+        # Use predict_proba; output is always risk score 1–5 (pgood.py contract)
+        probas = pipeline.predict_proba(X)
+        model_classes = pipeline.named_steps["model"].classes_
     except Exception as e:
         print(f"Prediction failed: {e}", file=sys.stderr)
         return 1
@@ -525,10 +612,31 @@ def main() -> int:
     for pos, (_, row) in enumerate(df_future.iterrows()):
         d = row["date"]
         date_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+        
+        # Convert to risk score 1–5 (same mapping as pgood.py)
+        proba_row = probas[pos]
+        if target_col == "flare_day":
+            class_1_idx = None
+            for i, cls in enumerate(model_classes):
+                if cls == 1:
+                    class_1_idx = i
+                    break
+            if class_1_idx is None:
+                flare_proba = proba_row[-1] if len(proba_row) > 1 else proba_row[0]
+            else:
+                flare_proba = proba_row[class_1_idx]
+            risk_score = 1.0 + flare_proba * 4.0  # [0,1] -> [1,5]
+            probability = flare_proba
+        else:
+            # risk 1–5: expected value of class probabilities
+            risk_score = sum(proba_row[i] * float(model_classes[i]) for i in range(len(model_classes)))
+            probability = float(max(proba_row))
+        # Round to 2 decimals so outputs are always decimal (e.g. 2.35, 3.70)
         out_records.append({
             "user_id": row["user_id"],
             "date": date_str,
-            target_col: float(preds[pos]),
+            target_col: round(float(risk_score), 2),
+            "probability": round(float(probability), 2),
         })
 
     # Store predictions in DB so next run can use cache

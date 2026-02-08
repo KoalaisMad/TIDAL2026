@@ -20,16 +20,18 @@ function getTidalRoot(): string {
     path.resolve(cwd, "..", "..", ".."),
     path.resolve(cwd, "..", "..", "..", ".."),
     path.join(cwd, "TIDAL2026"),
+    path.resolve(cwd, "..", "..", "..", "TIDAL2026"),
+    path.resolve(cwd, "..", "..", "TIDAL2026"),
   ]
+  const hasTidal = (dir: string) =>
+    fs.existsSync(path.join(dir, "risk_model_general.joblib")) ||
+    fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_risk.py")) ||
+    fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_flare.py")) ||
+    fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "D A T A", "flare_model.joblib"))
   for (const dir of candidates) {
-    if (
-      fs.existsSync(path.join(dir, "risk_model_general.joblib")) ||
-      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_risk.py")) ||
-      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_flare.py")) ||
-      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "D A T A", "flare_model.joblib"))
-    ) {
-      return dir
-    }
+    if (hasTidal(dir)) return dir
+    const tidal2026 = path.join(dir, "TIDAL2026")
+    if (fs.existsSync(tidal2026) && hasTidal(tidal2026)) return tidal2026
   }
   return path.resolve(cwd, "..", "..", "..")
 }

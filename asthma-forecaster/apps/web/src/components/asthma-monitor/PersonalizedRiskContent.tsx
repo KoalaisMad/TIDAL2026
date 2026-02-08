@@ -47,7 +47,7 @@ export function PersonalizedRiskContent() {
   const [checkInSaved, setCheckInSaved] = React.useState(false)
   const [checkInSaving, setCheckInSaving] = React.useState(false)
 
-  // Personalized 7-day predictions (from saved profile + check-ins) — only show when from predict_personalized.py
+  // Personalized 7-day predictions from pgood model + saved profile & check-ins (predict_personalized.py)
   const [weekData, setWeekData] = React.useState<Map<string, WeekDayData>>(new Map())
   const [fromModel, setFromModel] = React.useState<boolean | null>(null)
   const [weekLoading, setWeekLoading] = React.useState(true)
@@ -87,16 +87,13 @@ export function PersonalizedRiskContent() {
           return
         }
         const json = (await res.json()) as { start?: string; days?: WeekDayData[]; fromModel?: boolean }
-        const fromPredict = json.fromModel === true
-        setFromModel(fromPredict)
+        setFromModel(json.fromModel === true)
         const days = json.days ?? []
-        // Only display risk scores that come from predict_personalized.py; ignore fallback/mock data
+        // Always show 7 days (from pgood model or estimated fallback) so the strip and gauge have values
         const map = new Map<string, WeekDayData>()
-        if (fromPredict) {
-          days.forEach((d) => {
-            if (d?.date) map.set(d.date, d)
-          })
-        }
+        days.forEach((d) => {
+          if (d?.date) map.set(d.date, d)
+        })
         setWeekData(map)
       } catch {
         setWeekData(new Map())
@@ -115,15 +112,11 @@ export function PersonalizedRiskContent() {
       fetch("/api/risk/personalized")
         .then((res) => (res.ok ? res.json() : null))
         .then((json: { days?: WeekDayData[]; fromModel?: boolean } | null) => {
-          if (json?.fromModel === true && json?.days) {
-            const map = new Map<string, WeekDayData>()
-            json.days.forEach((d) => { if (d?.date) map.set(d.date, d) })
-            setWeekData(map)
-            setFromModel(true)
-          } else {
-            setWeekData(new Map())
-            setFromModel(false)
-          }
+          setFromModel(json?.fromModel === true ?? false)
+          const days = json?.days ?? []
+          const map = new Map<string, WeekDayData>()
+          days.forEach((d) => { if (d?.date) map.set(d.date, d) })
+          setWeekData(map)
         })
         .finally(() => setWeekLoading(false))
     }
@@ -157,9 +150,15 @@ export function PersonalizedRiskContent() {
 
   return (
     <>
-      {/* Personalized 7-day predictions from saved profile + check-ins */}
+      {/* Personalized 7-day predictions from pgood model + profile & check-ins */}
       <h2 className="text-sm font-medium text-muted-foreground">
-        Next 7 days — personalized risk from your saved settings
+        {weekLoading
+          ? "Next 7 days — loading personalized risk…"
+          : fromModel === true
+            ? "Next 7 days — personalized risk (pgood model, your profile & check-ins)"
+            : fromModel === false
+              ? "Next 7 days — personalized risk (estimated)"
+              : "Next 7 days — personalized risk"}
       </h2>
       <DateStrip
         days={weekDays}
@@ -168,7 +167,7 @@ export function PersonalizedRiskContent() {
         dayRiskMap={dayRiskMap}
       />
       {weekLoading && (
-        <p className="text-muted-foreground text-sm">Loading personalized predictions…</p>
+        <p className="text-muted-foreground text-sm">Loading personalized predictions (pgood model)…</p>
       )}
       <RiskGauge value={riskScore} label={riskLabel} />
 
