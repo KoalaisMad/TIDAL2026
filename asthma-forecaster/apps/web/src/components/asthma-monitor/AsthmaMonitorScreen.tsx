@@ -2,6 +2,8 @@
 
 import * as React from "react"
 import { Droplets, Sprout, Thermometer, Wind } from "lucide-react"
+import { useSession, signIn } from "next-auth/react"
+import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -50,6 +52,8 @@ function toIsoDateForSelectedDay(selectedDayId: string) {
 }
 
 export function AsthmaMonitorScreen() {
+  const router = useRouter()
+  const { data: session, status } = useSession()
   const [tab, setTab] = React.useState<"environmental" | "personalized">(
     "environmental"
   )
@@ -133,8 +137,20 @@ export function AsthmaMonitorScreen() {
               size="pill"
               className="w-full md:w-fit md:px-12"
               onClick={() => {
-                // TODO(api): Hook up navigation / fetch personalized risk.
-                setTab("personalized")
+                // Check authentication before navigating
+                if (status === "loading") {
+                  return
+                }
+                
+                if (!session) {
+                  // Not authenticated, redirect to sign-in
+                  signIn("google", {
+                    callbackUrl: "/breathe-well/personalized",
+                  })
+                } else {
+                  // Authenticated, navigate to personalized page
+                  router.push("/breathe-well/personalized")
+                }
               }}
             >
               Get Personalized Risk
