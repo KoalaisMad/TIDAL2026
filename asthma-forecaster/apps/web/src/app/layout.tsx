@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import "./globals.css"
 import SessionProvider from "@/components/providers/SessionProvider"
+import FloatingMascot from "@/components/FloatingMascot"
 
 export const metadata: Metadata = {
   title: "Asthma Monitor",
@@ -23,6 +24,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased min-w-0 overflow-x-hidden">
         <SessionProvider>{children}</SessionProvider>
+        <FloatingMascot />
       </body>
     </html>
   )
