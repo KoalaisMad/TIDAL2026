@@ -41,15 +41,15 @@ export function Header({ title }: { title: string }) {
     savedName ?? session?.user?.name ?? session?.user?.email ?? "Logged in"
 
   return (
-    <header className="flex items-center justify-between py-2">
-      <div>
-        <p className="text-sm font-light text-muted-foreground">Good morning,</p>
-        <h1 className="text-2xl font-bold tracking-tight">
+    <header className="flex min-w-0 items-center justify-between gap-3 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-light text-muted-foreground sm:text-sm">Good morning,</p>
+        <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
           {status === "authenticated" && displayName ? displayName : title}
         </h1>
       </div>
       {status === "authenticated" && session?.user && (
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => setProfileOpen(true)}

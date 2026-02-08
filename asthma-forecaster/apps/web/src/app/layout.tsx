@@ -1,10 +1,17 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import "./globals.css"
 import SessionProvider from "@/components/providers/SessionProvider"
 
 export const metadata: Metadata = {
   title: "Asthma Monitor",
   description: "Mobile-first asthma risk dashboard",
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 }
 
 export default function RootLayout({
@@ -14,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body className="antialiased min-w-0 overflow-x-hidden">
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

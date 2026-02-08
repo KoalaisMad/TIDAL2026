@@ -8,12 +8,11 @@ export const layout = {
   /** App page background - warm orangey-peach with subtle gradient */
   pageBg: "min-h-dvh bg-gradient-warm",
   /**
-   * Mobile-first container matching the screenshot, with a wider desktop container.
-   * This keeps mobile "full" (w-full) while improving browser use of space.
-   * Generous whitespace for calm, breathable layout
+   * Mobile-first container with smooth breakpoints (sm → md → lg).
+   * Avoids a single jump from narrow to wide; safe-area-aware padding.
    */
   container:
-    "mx-auto w-full max-w-sm px-6 py-8 md:max-w-5xl md:px-10 md:py-12",
+    "mx-auto w-full min-w-0 max-w-sm px-4 py-6 sm:max-w-xl sm:px-6 sm:py-8 md:max-w-3xl md:px-8 md:py-10 lg:max-w-5xl lg:px-10 lg:py-12",
 } as const
 
 export const spacing = {

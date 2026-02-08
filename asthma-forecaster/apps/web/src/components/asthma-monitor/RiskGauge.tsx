@@ -28,12 +28,12 @@ export function RiskGauge({ value, max = 5, label, className }: RiskGaugeProps) 
   const dashOffset = dash * (1 - progress)
 
   return (
-    <div className={cn("relative mx-auto w-full max-w-[280px] rounded-3xl bg-card p-6 shadow-md", className)}>
+    <div className={cn("relative mx-auto w-full max-w-[280px] rounded-3xl bg-card p-4 shadow-md sm:p-6", className)}>
       <svg
         width={size}
         height={size}
         viewBox={`0 0 ${size} ${size}`}
-        className="mx-auto block"
+        className="mx-auto block w-full max-w-[240px] sm:max-w-none"
         aria-label={`Risk gauge: ${label}`}
         role="img"
       >
@@ -64,15 +64,15 @@ export function RiskGauge({ value, max = 5, label, className }: RiskGaugeProps) 
       </svg>
 
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <div className="text-5xl font-bold leading-none tabular-nums">
+        <div className="text-4xl font-bold leading-none tabular-nums sm:text-5xl">
           {hasScore
             ? Number.isInteger(value) ? value : (value as number).toFixed(1)
             : "—"}
         </div>
-        <div className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
           Risk score
         </div>
-        <div className="mt-2 text-base font-medium text-muted-foreground">
+        <div className="mt-2 text-sm font-medium text-muted-foreground sm:text-base">
           {hasScore ? label : "No prediction"}
         </div>
       </div>

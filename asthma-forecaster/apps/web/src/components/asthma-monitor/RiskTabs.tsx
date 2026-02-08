@@ -57,31 +57,34 @@ export function RiskTabs({ value, onValueChange, className }: RiskTabsProps) {
       onValueChange={handleTabChange}
       className={cn("w-full", className)}
     >
-      <TabsList className="w-full justify-between bg-transparent p-0 gap-6">
+      <TabsList className="w-full justify-between gap-3 bg-transparent p-0 sm:gap-6">
         <TabsTrigger
           value="environmental"
-          className="rounded-none bg-transparent px-0 text-base font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:font-bold cursor-pointer"
+          className="min-h-10 touch-manipulation rounded-none bg-transparent px-0 text-sm font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:font-bold sm:min-h-0 sm:text-base"
         >
-          <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 sm:gap-2">
             {value === "personalized" && (
-              <ArrowLeft className="h-5 w-5 shrink-0" aria-hidden="true" />
+              <ArrowLeft className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />
             )}
-            Environmental Risk
+            <span className="hidden sm:inline">Environmental Risk</span>
+            <span className="sm:hidden">Environmental</span>
           </span>
         </TabsTrigger>
 
         <TabsTrigger
           value="personalized"
           className={cn(
-            "text-base font-medium cursor-pointer transition-all",
+            "min-h-10 touch-manipulation text-sm font-medium transition-all sm:min-h-0 sm:text-base cursor-pointer",
             isAuthenticated
               ? "rounded-none bg-transparent px-0 text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:font-bold"
-              : "h-11 px-6 py-3 rounded-3xl bg-primary text-primary-foreground font-semibold shadow-md hover:shadow-lg hover:brightness-110"
+              : "h-11 px-4 py-3 rounded-3xl bg-primary text-primary-foreground font-semibold shadow-md hover:shadow-lg hover:brightness-110 sm:px-6"
           )}
         >
           {isAuthenticated ? (
-            <span className="inline-flex items-center gap-2">
-              Personalized Risk <ArrowRight className="h-5 w-5" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1.5 sm:gap-2">
+              <span className="hidden sm:inline">Personalized Risk</span>
+              <span className="sm:hidden">Personalized</span>
+              <ArrowRight className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" aria-hidden="true" />
             </span>
           ) : (
             <span className="inline-flex items-center gap-2">

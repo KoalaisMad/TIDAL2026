@@ -17,7 +17,7 @@ type DateStripProps = {
 
 export function DateStrip({ days, selectedId, onSelect, dayRiskMap }: DateStripProps) {
   return (
-    <div className="rounded-3xl bg-card shadow-md">
+    <div className="min-w-0 overflow-hidden rounded-3xl bg-card shadow-md">
       <div className="scrollbar-none flex snap-x snap-proximity gap-3 overflow-x-auto p-4 [scrollbar-gutter:stable] md:justify-between md:overflow-visible md:p-5">
         {days.map((d) => {
           const selected = d.id === selectedId
@@ -29,7 +29,7 @@ export function DateStrip({ days, selectedId, onSelect, dayRiskMap }: DateStripP
               onClick={() => onSelect(d.id)}
               aria-pressed={selected}
               className={cn(
-                "snap-start rounded-3xl border-0 px-4 py-3 text-center transition-all sm:px-5",
+                "touch-manipulation snap-start rounded-3xl border-0 px-4 py-3 text-center transition-all sm:px-5",
                 "min-w-[52px] flex-none sm:min-w-[60px] md:min-w-0 md:flex-1",
                 selected
                   ? "bg-primary text-primary-foreground shadow-lg scale-105"

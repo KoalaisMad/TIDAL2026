@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import { useRouter } from "next/navigation"
 import { DateStrip } from "./DateStrip"
+import { PredictionsLoadingIndicator } from "./PredictionsLoadingIndicator"
 import { RiskGauge } from "./RiskGauge"
 import { getWeekDaysFromToday } from "./mockData"
 
@@ -166,10 +167,19 @@ export function PersonalizedRiskContent() {
         onSelect={(id) => setSelectedDayId(id)}
         dayRiskMap={dayRiskMap}
       />
-      {weekLoading && (
-        <p className="text-muted-foreground text-sm">Loading personalized predictions (pgood model)…</p>
+      {(weekLoading || riskScore === null) ? (
+        <PredictionsLoadingIndicator
+          message={weekLoading ? "Loading personalized risk…" : "Loading prediction…"}
+          submessage={
+            weekLoading
+              ? "Using your profile and check-ins with the pgood model"
+              : "Getting risk for this day"
+          }
+          showGaugeSkeleton
+        />
+      ) : (
+        <RiskGauge value={riskScore} label={riskLabel} />
       )}
-      <RiskGauge value={riskScore} label={riskLabel} />
 
       {/* Short daily check-in (10–15 seconds) */}
       <Card className="p-6">
@@ -273,11 +283,11 @@ export function PersonalizedRiskContent() {
         </div>
       </Card>
 
-      <div className="sticky bottom-6 flex justify-center pt-4 md:static">
+      <div className="sticky bottom-0 left-0 right-0 flex justify-center pb-safe pt-4 md:static md:pb-0">
         <Button
           size="pill"
           variant="outline"
-          className="w-full md:w-fit md:px-12"
+          className="min-h-11 w-full touch-manipulation md:min-h-0 md:w-fit md:px-12"
           onClick={() => {
             router.push("/breathe-well/environmental")
           }}

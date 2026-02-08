@@ -309,15 +309,15 @@ export function AllergyChatbot({
             type="button"
             variant={isRecording ? "destructive" : "outline"}
             size="icon"
-            className="shrink-0 rounded-2xl"
+            className="h-12 w-12 shrink-0 rounded-2xl"
             onClick={toggleRecording}
             disabled={loading}
             aria-label={isRecording ? "Stop recording" : "Voice input"}
           >
             {isRecording ? (
-              <Square className="size-4" />
+              <Square className="size-5" />
             ) : (
-              <Mic className="size-4" />
+              <Mic className="size-5" />
             )}
           </Button>
           <Input

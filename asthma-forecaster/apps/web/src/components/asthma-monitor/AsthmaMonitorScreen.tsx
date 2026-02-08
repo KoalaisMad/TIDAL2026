@@ -160,21 +160,21 @@ export function AsthmaMonitorScreen() {
           />
 
           {/* Mobile-first: single column; Desktop: use space with a 2-col grid */}
-          <div className="grid gap-8 md:grid-cols-2 md:items-start">
-            <div className="space-y-8">
+          <div className="grid min-w-0 gap-6 sm:gap-8 md:grid-cols-2 md:items-start">
+            <div className="min-w-0 space-y-6 sm:space-y-8">
               <RiskGauge value={riskScore} label={riskLabel} />
               <RiskFactors items={activeRiskFactors} />
             </div>
 
-            <div className="space-y-8">
+            <div className="min-w-0 space-y-6 sm:space-y-8">
               <Recommendations items={recs} />
             </div>
           </div>
 
-          <div className="sticky bottom-6 flex justify-center pt-4 md:static">
+          <div className="sticky bottom-0 left-0 right-0 flex justify-center pb-safe pt-4 md:static md:pb-0">
             <Button
               size="pill"
-              className="w-full md:w-fit md:px-12"
+              className="min-h-11 w-full touch-manipulation md:min-h-0 md:w-fit md:px-12"
               onClick={() => {
                 // Check authentication before navigating
                 if (status === "loading") {

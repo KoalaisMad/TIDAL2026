@@ -24,6 +24,8 @@ export interface StoredUser {
   _id?: string
   email: string
   name?: string
+  /** Location for risk alerts: "lat,lon" or ZIP, used by /api/week. */
+  location?: string
   profile?: UserProfile
   checkIns?: DailyCheckInRecord[]
   createdAt: Date
@@ -71,6 +73,7 @@ export async function getUserByEmail(email: string): Promise<StoredUser | null> 
     _id: String(doc._id),
     email: doc.email,
     name: doc.name,
+    location: doc.location,
     profile: doc.profile,
     checkIns: doc.checkIns,
     createdAt: doc.createdAt,
@@ -107,5 +110,27 @@ export async function getAllUsersWithEmail(): Promise<
   return docs.map((d) => ({
     email: String(d.email ?? ""),
     name: d.name != null ? String(d.name) : undefined,
+  }))
+}
+
+const DEFAULT_ALERT_LOCATION = "37.77,-122.42"
+
+/** Users with email for high-risk day alerts; each has a location (stored or default). */
+export async function getUsersForHighRiskAlerts(): Promise<
+  Array<{ email: string; name?: string; location: string }>
+> {
+  const db = await getDb()
+  const defaultLocation =
+    (typeof process !== "undefined" && process.env?.DEFAULT_ALERT_LOCATION?.trim()) ||
+    DEFAULT_ALERT_LOCATION
+  const cursor = db
+    .collection(USERS_COLLECTION)
+    .find({ email: { $exists: true, $ne: "" } })
+    .project({ email: 1, name: 1, location: 1 })
+  const docs = await cursor.toArray()
+  return docs.map((d) => ({
+    email: String(d.email ?? ""),
+    name: d.name != null ? String(d.name) : undefined,
+    location: d.location?.trim() || defaultLocation,
   }))
 }

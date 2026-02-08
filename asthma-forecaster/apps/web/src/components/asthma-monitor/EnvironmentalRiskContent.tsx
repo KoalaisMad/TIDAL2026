@@ -10,6 +10,7 @@ import { useSession, signIn } from "next-auth/react"
 import { AllergyChatbot } from "./AllergyChatbot"
 import { DateStrip } from "./DateStrip"
 import { useGeolocation } from "./useGeolocation"
+import { PredictionsLoadingIndicator } from "./PredictionsLoadingIndicator"
 import { Recommendations } from "./Recommendations"
 import { RiskFactors } from "./RiskFactors"
 import { RiskGauge } from "./RiskGauge"
@@ -117,6 +118,8 @@ export function EnvironmentalRiskContent() {
   const [fromModel, setFromModel] = React.useState<boolean | null>(null)
   const [recs, setRecs] = React.useState<Recommendation[]>([])
   const [recsLoading, setRecsLoading] = React.useState(false)
+  const [testEmailSending, setTestEmailSending] = React.useState(false)
+  const [testEmailMessage, setTestEmailMessage] = React.useState<string | null>(null)
 
   const selectedDate = dateForSelectedDay(selectedDayId, weekDays)
   const selectedDayData = weekData.get(selectedDate)
@@ -179,6 +182,16 @@ export function EnvironmentalRiskContent() {
     return () => controller.abort()
   }, [weekDays, location])
 
+  // Persist location for high-risk day email alerts when user is logged in
+  React.useEffect(() => {
+    if (status !== "authenticated" || !session?.user?.email || !location?.trim()) return
+    fetch("/api/users/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ location: location.trim() }),
+    }).catch(() => {})
+  }, [status, session?.user?.email, location])
+
   React.useEffect(() => {
     if (!selectedDayData?.risk?.level) return
     const controller = new AbortController()
@@ -207,7 +220,10 @@ export function EnvironmentalRiskContent() {
   return (
     <>
       {locationStatus === "loading" && (
-        <p className="text-muted-foreground text-sm">Getting your location…</p>
+        <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 text-sm">
+          <span className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span className="text-muted-foreground">Getting your location…</span>
+        </div>
       )}
       {(locationStatus === "denied" || locationStatus === "error" || locationStatus === "unavailable") && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -236,17 +252,30 @@ export function EnvironmentalRiskContent() {
         onSelect={(id) => setSelectedDayId(id)}
         dayRiskMap={dayRiskMap}
       />
-      {weekLoading && (
-        <p className="text-muted-foreground text-sm">Loading predictions (model compiling)…</p>
-      )}
-
       {/* Mobile-first: single column; Desktop: use space with a 2-col grid */}
-      <div className="grid gap-8 md:grid-cols-2 md:items-start">
-        <div className="space-y-8">
-          {recsLoading && (
-            <p className="text-muted-foreground text-sm">Loading recommendations…</p>
+      <div className="grid min-w-0 gap-6 sm:gap-8 md:grid-cols-2 md:items-start">
+        <div className="min-w-0 space-y-6 sm:space-y-8">
+          {weekLoading || riskScore === null ? (
+            <PredictionsLoadingIndicator
+              message={weekLoading ? "Running risk model…" : "Loading prediction…"}
+              submessage={
+                weekLoading
+                  ? "Compiling environmental data and generating 7-day forecast"
+                  : "Getting risk for this day"
+              }
+              showGaugeSkeleton
+            />
+          ) : (
+            <>
+              {recsLoading && (
+                <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 text-sm">
+                  <span className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  <span className="text-muted-foreground">Loading recommendations…</span>
+                </div>
+              )}
+              <RiskGauge value={riskScore} label={riskLabel} />
+            </>
           )}
-          <RiskGauge value={riskScore} label={riskLabel} />
           <RiskFactors items={activeRiskFactors} />
           {selectedDayData != null && (
             <div className="rounded-2xl border bg-card p-4 text-sm">
@@ -326,22 +355,57 @@ export function EnvironmentalRiskContent() {
           )}
         </div>
 
-        <div className="space-y-8">
+        <div className="min-w-0 space-y-6 sm:space-y-8">
           <Recommendations items={recs} />
           <AllergyChatbot weekData={weekData} weekStart={weekDays[0]?.id} />
         </div>
       </div>
 
-      <div className="sticky bottom-6 flex justify-center pt-4 md:static">
+      <div className="sticky bottom-0 left-0 right-0 flex flex-col items-center gap-3 pb-safe pt-4 md:static md:pb-0">
+        {session && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+            disabled={testEmailSending}
+            onClick={async () => {
+              setTestEmailMessage(null)
+              setTestEmailSending(true)
+              try {
+                const res = await fetch("/api/cron/daily-high-risk/test", {
+                  method: "POST",
+                })
+                const data = await res.json().catch(() => ({}))
+                if (res.ok && data.ok) {
+                  setTestEmailMessage(`Test email sent to ${data.to ?? session?.user?.email}.`)
+                } else {
+                  setTestEmailMessage(data.error ?? "Failed to send test email.")
+                }
+              } catch {
+                setTestEmailMessage("Failed to send test email.")
+              } finally {
+                setTestEmailSending(false)
+              }
+            }}
+          >
+            {testEmailSending ? "Sending…" : "Send test high-risk email"}
+          </Button>
+        )}
+        {testEmailMessage && (
+          <p className="text-center text-xs text-muted-foreground" role="status">
+            {testEmailMessage}
+          </p>
+        )}
         <Button
           size="pill"
-          className="w-full md:w-fit md:px-12"
+          className="min-h-11 w-full touch-manipulation md:min-h-0 md:w-fit md:px-12"
           onClick={() => {
             // Check authentication before navigating
             if (status === "loading") {
               return
             }
-            
+
             if (!session) {
               // Not authenticated, redirect to sign-in
               signIn("google", {
