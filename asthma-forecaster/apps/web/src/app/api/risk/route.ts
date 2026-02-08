@@ -25,7 +25,9 @@ function getTidalRoot(): string {
   for (const dir of candidates) {
     if (
       fs.existsSync(path.join(dir, "risk_model_general.joblib")) ||
-      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_risk.py"))
+      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_risk.py")) ||
+      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_flare.py")) ||
+      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "D A T A", "flare_model.joblib"))
     ) {
       return dir
     }
@@ -54,21 +56,37 @@ function loadTidalEnv(tidalRoot: string): void {
   }
 }
 
+function getPythonCandidates(tidalRoot: string): string[] {
+  const venvPy =
+    process.platform === "win32"
+      ? path.join(tidalRoot, "asthma-forecaster", "apps", "ml", ".venv", "Scripts", "python.exe")
+      : path.join(tidalRoot, "asthma-forecaster", "apps", "ml", ".venv", "bin", "python")
+  if (fs.existsSync(venvPy)) return [venvPy]
+  return process.platform === "win32" ? ["py", "python"] : ["python3", "python"]
+}
+
 function runPython(
   tidalRoot: string,
   date: string,
   pythonCmd?: string,
   locationId?: string | null
 ): ReturnType<typeof spawnSync> {
-  const py = pythonCmd ?? (process.platform === "win32" ? "python" : "python3")
-  const args = ["-m", "apps.ml.predict_risk", "--date", date]
+  const candidates = pythonCmd ? [pythonCmd] : getPythonCandidates(tidalRoot)
+  const args = ["-m", "apps.ml.predict_flare", "--date", date]
   if (locationId?.trim()) args.push("--location-id", locationId.trim())
-  return spawnSync(py, args, {
-    cwd: tidalRoot,
-    encoding: "utf-8",
-    env: { ...process.env, PYTHONPATH: path.join(tidalRoot, "asthma-forecaster") },
-    timeout: 15000,
-  })
+  const env = { ...process.env, PYTHONPATH: path.join(tidalRoot, "asthma-forecaster"), TIDAL_ROOT: tidalRoot }
+  for (const py of candidates) {
+    const result = spawnSync(py, args, {
+      cwd: tidalRoot,
+      encoding: "utf-8",
+      env,
+      timeout: 15000,
+    })
+    if (result.status === 0 && typeof result.stdout === "string" && result.stdout.trim()) return result
+    if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") continue
+    return result
+  }
+  return spawnSync(candidates[0], args, { cwd: tidalRoot, encoding: "utf-8", env, timeout: 15000 })
 }
 
 /** Normalize user location to location_id: "lat,lon" -> "lat_lon", ZIP -> zip_XXXXX. */
@@ -100,12 +118,8 @@ export async function GET(request: Request) {
   const tidalRoot = getTidalRoot()
   loadTidalEnv(tidalRoot)
 
-  // Environment risk uses trainingModel pipeline (predict_risk loads risk_model_general.joblib)
-  let result = runPython(tidalRoot, date!, undefined, locationId)
-  const errCode = (result.error as NodeJS.ErrnoException)?.code
-  if (result.status !== 0 && errCode === "ENOENT" && process.platform !== "win32") {
-    result = runPython(tidalRoot, date!, "python", locationId)
-  }
+  // Flare model (predict_flare loads D A T A/flare_model.joblib)
+  const result = runPython(tidalRoot, date!, undefined, locationId)
   const stdout = typeof result.stdout === "string" ? result.stdout.trim() : ""
   if (stdout) {
     try {
@@ -135,6 +149,14 @@ export async function GET(request: Request) {
       // fall through
     }
   }
+  const stderr = typeof result.stderr === "string" ? result.stderr.trim() : ""
+  const err = result.error as NodeJS.ErrnoException | undefined
+  console.error(
+    "[api/risk] Model fallback: status=%s stderr=%s error=%s",
+    result.status,
+    stderr || "(none)",
+    err?.message ?? err?.code ?? "(none)"
+  )
   const fallbackByDate = (d: string) => {
     const n = d.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0)
     const score = 1.5 + (n % 30) / 10

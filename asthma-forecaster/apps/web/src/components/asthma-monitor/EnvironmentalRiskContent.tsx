@@ -91,6 +91,7 @@ export function EnvironmentalRiskContent() {
 
   const [weekData, setWeekData] = React.useState<Map<string, WeekDayData>>(new Map())
   const [weekLoading, setWeekLoading] = React.useState(true)
+  const [fromModel, setFromModel] = React.useState<boolean | null>(null)
   const [recs, setRecs] = React.useState<Recommendation[]>([])
   const [recsLoading, setRecsLoading] = React.useState(false)
 
@@ -137,13 +138,14 @@ export function EnvironmentalRiskContent() {
           setWeekData(new Map())
           return
         }
-        const json = (await res.json()) as { start?: string; days?: WeekDayData[] }
+        const json = (await res.json()) as { start?: string; days?: WeekDayData[]; fromModel?: boolean }
         const days = json.days ?? []
         const map = new Map<string, WeekDayData>()
         days.forEach((d) => {
           if (d?.date) map.set(d.date, d)
         })
         setWeekData(map)
+        setFromModel(json.fromModel ?? null)
       } catch {
         setWeekData(new Map())
       } finally {
@@ -191,7 +193,13 @@ export function EnvironmentalRiskContent() {
         </div>
       )}
       <h2 className="text-sm font-medium text-muted-foreground">
-        Next 7 days — risk forecast from model
+        {weekLoading
+          ? "Next 7 days — running model…"
+          : fromModel === true
+            ? "Next 7 days — risk forecast from model"
+            : fromModel === false
+              ? "Next 7 days — risk forecast (estimated)"
+              : "Next 7 days — risk forecast"}
       </h2>
       <DateStrip
         days={weekDays}
@@ -200,7 +208,7 @@ export function EnvironmentalRiskContent() {
         dayRiskMap={dayRiskMap}
       />
       {weekLoading && (
-        <p className="text-muted-foreground text-sm">Loading week predictions…</p>
+        <p className="text-muted-foreground text-sm">Loading predictions (model compiling)…</p>
       )}
 
       {/* Mobile-first: single column; Desktop: use space with a 2-col grid */}
@@ -211,23 +219,30 @@ export function EnvironmentalRiskContent() {
           )}
           <RiskGauge value={riskScore} label={riskLabel} />
           <RiskFactors items={activeRiskFactors} />
-          {daily && (
+          {selectedDayData != null && (
             <div className="rounded-2xl border bg-card p-4 text-sm">
               <h3 className="mb-2 font-medium">Data for this day</h3>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
-                {daily.AQI != null && <><dt className="text-muted-foreground">AQI</dt><dd>{daily.AQI}</dd></>}
-                {daily.PM2_5_mean != null && <><dt className="text-muted-foreground">PM2.5 mean</dt><dd>{daily.PM2_5_mean}</dd></>}
-                {daily.PM2_5_max != null && <><dt className="text-muted-foreground">PM2.5 max</dt><dd>{daily.PM2_5_max}</dd></>}
-                {daily.day_of_week != null && <><dt className="text-muted-foreground">Day</dt><dd>{daily.day_of_week}</dd></>}
-                {daily.season != null && <><dt className="text-muted-foreground">Season</dt><dd>{daily.season}</dd></>}
-                {(daily.temp_min != null || daily.temp_max != null) && (
-                  <><dt className="text-muted-foreground">Temp</dt><dd>{[daily.temp_min, daily.temp_max].filter((t) => t != null).join("–")} °C</dd></>
-                )}
-                {daily.humidity != null && <><dt className="text-muted-foreground">Humidity</dt><dd>{daily.humidity}%</dd></>}
-                {(daily.pollen_tree != null || daily.pollen_grass != null || daily.pollen_weed != null) && (
-                  <><dt className="text-muted-foreground">Pollen</dt><dd>Tree {daily.pollen_tree ?? "—"} / Grass {daily.pollen_grass ?? "—"} / Weed {daily.pollen_weed ?? "—"}</dd></>
-                )}
-              </dl>
+              {fromModel === false && (
+                <p className="text-muted-foreground mb-2 text-xs">Estimated. Run the model (see below) for real environmental data.</p>
+              )}
+              {daily && (daily.day_of_week != null || daily.season != null || daily.AQI != null || daily.PM2_5_mean != null || daily.temp_min != null || daily.humidity != null) ? (
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {daily.AQI != null && <><dt className="text-muted-foreground">AQI</dt><dd>{daily.AQI}</dd></>}
+                  {daily.PM2_5_mean != null && <><dt className="text-muted-foreground">PM2.5 mean</dt><dd>{daily.PM2_5_mean}</dd></>}
+                  {daily.PM2_5_max != null && <><dt className="text-muted-foreground">PM2.5 max</dt><dd>{daily.PM2_5_max}</dd></>}
+                  {daily.day_of_week != null && <><dt className="text-muted-foreground">Day</dt><dd>{daily.day_of_week}</dd></>}
+                  {daily.season != null && <><dt className="text-muted-foreground">Season</dt><dd>{daily.season}</dd></>}
+                  {(daily.temp_min != null || daily.temp_max != null) && (
+                    <><dt className="text-muted-foreground">Temp</dt><dd>{[daily.temp_min, daily.temp_max].filter((t) => t != null).join("–")} °C</dd></>
+                  )}
+                  {daily.humidity != null && <><dt className="text-muted-foreground">Humidity</dt><dd>{daily.humidity}%</dd></>}
+                  {(daily.pollen_tree != null || daily.pollen_grass != null || daily.pollen_weed != null) && (
+                    <><dt className="text-muted-foreground">Pollen</dt><dd>Tree {daily.pollen_tree ?? "—"} / Grass {daily.pollen_grass ?? "—"} / Weed {daily.pollen_weed ?? "—"}</dd></>
+                  )}
+                </dl>
+              ) : (
+                <p className="text-muted-foreground text-xs">No environmental data for this day.</p>
+              )}
             </div>
           )}
         </div>

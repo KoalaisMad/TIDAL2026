@@ -24,7 +24,9 @@ function getTidalRoot(): string {
   for (const dir of candidates) {
     if (
       fs.existsSync(path.join(dir, "risk_model_general.joblib")) ||
-      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_risk.py"))
+      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_risk.py")) ||
+      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "ml", "predict_flare.py")) ||
+      fs.existsSync(path.join(dir, "asthma-forecaster", "apps", "D A T A", "flare_model.joblib"))
     ) {
       return dir
     }
@@ -72,7 +74,7 @@ function toLocationId(location: string | null): string | null {
   return s
 }
 
-/** GET /api/week?start=YYYY-MM-DD&days=7&location=... — next N days using environment risk model (trainingModel / predict_risk). */
+/** GET /api/week?start=YYYY-MM-DD&days=7&location=... — next N days using flare model (predict_flare). */
 export async function GET(request: Request) {
   const url = new URL(request.url)
   let start = url.searchParams.get("start")
@@ -86,25 +88,42 @@ export async function GET(request: Request) {
   const tidalRoot = getTidalRoot()
   loadTidalEnv(tidalRoot)
 
-  // Environment risk uses trainingModel pipeline (predict_risk loads risk_model_general.joblib)
-  const py = process.platform === "win32" ? "python" : "python3"
-  const args = ["-m", "apps.ml.predict_risk", "--week", "--start", start, "--days", String(days)]
-  if (locationId) args.push("--location-id", locationId)
+  const envWithPath = {
+    ...process.env,
+    PYTHONPATH: path.join(tidalRoot, "asthma-forecaster"),
+    TIDAL_ROOT: tidalRoot,
+  }
 
-  let result = spawnSync(py, args, {
-    cwd: tidalRoot,
-    encoding: "utf-8",
-    env: { ...process.env, PYTHONPATH: path.join(tidalRoot, "asthma-forecaster") },
-    timeout: 30000,
-  })
-  const errCode = (result.error as NodeJS.ErrnoException)?.code
-  if (result.status !== 0 && errCode === "ENOENT" && process.platform !== "win32") {
-    result = spawnSync("python", args, {
+  const args = ["-m", "apps.ml.predict_flare", "--week", "--start", start, "--days", String(days)]
+  if (locationId) args.push("--location-id", locationId)
+  // Pass --lat/--lon when location is "lat_lon" so flare script can fetch week data via API
+  if (locationId && !locationId.startsWith("zip_") && locationId.includes("_")) {
+    const parts = locationId.split("_", 2)
+    const lat = parseFloat(parts[0])
+    const lon = parseFloat(parts[1])
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      args.push("--lat", String(lat), "--lon", String(lon))
+    }
+  }
+
+  // Prefer venv Python (same one used by apps/ml/run.ps1) so model runs even when system py/python is broken
+  const venvPy =
+    process.platform === "win32"
+      ? path.join(tidalRoot, "asthma-forecaster", "apps", "ml", ".venv", "Scripts", "python.exe")
+      : path.join(tidalRoot, "asthma-forecaster", "apps", "ml", ".venv", "bin", "python")
+  const pyCandidates: string[] =
+    fs.existsSync(venvPy) ? [venvPy] : process.platform === "win32" ? ["py", "python"] : ["python3", "python"]
+
+  let result: ReturnType<typeof spawnSync> = { status: -1, stdout: "", stderr: "", output: [], signal: null, error: undefined }
+  for (const py of pyCandidates) {
+    result = spawnSync(py, args, {
       cwd: tidalRoot,
       encoding: "utf-8",
-      env: { ...process.env, PYTHONPATH: path.join(tidalRoot, "asthma-forecaster") },
+      env: envWithPath,
       timeout: 30000,
     })
+    if (result.status === 0 && typeof result.stdout === "string" && result.stdout.trim()) break
+    if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") continue
   }
 
   const stdout = typeof result.stdout === "string" ? result.stdout.trim() : ""
@@ -120,22 +139,41 @@ export async function GET(request: Request) {
         }>
       }
       if (Array.isArray(data.days)) {
-        const days = data.days.map((d: { date: string; risk: { score: number; level: string; label: string }; activeRiskFactors?: unknown[]; daily?: unknown }) => ({
+        const mappedDays = data.days.map((d: { date: string; risk: { score: number; level: string; label: string }; activeRiskFactors?: unknown[]; daily?: unknown }) => ({
           ...d,
           risk: {
             ...d.risk,
             score: toFloatScore(d.risk.score),
           },
         }))
-        return NextResponse.json({ start: data.start, days: days })
+        return NextResponse.json({ start: data.start, days: mappedDays, fromModel: true })
       }
     } catch {
       // fall through
     }
   }
 
+  // Log why the model didn't run so you can fix env/Python/model path
+  if (result.status !== 0 || !stdout) {
+    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : ""
+    const err = result.error as NodeJS.ErrnoException | undefined
+    console.error(
+      "[api/week] Model fallback: status=%s stderr=%s error=%s",
+      result.status,
+      stderr || "(none)",
+      err?.message ?? err?.code ?? "(none)"
+    )
+  }
+
   const fallbackStart = start ?? toLocalDateStr(new Date())
-  const fallbackDays = []
+  const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+  const SEASONS = ["winter", "spring", "summer", "fall"]
+  const fallbackDays: Array<{
+    date: string
+    risk: { score: number; level: string; label: string }
+    activeRiskFactors: unknown[]
+    daily: Record<string, unknown>
+  }> = []
   const levels: Array<{ score: number; level: string; label: string }> = [
     { score: 1.5, level: "low", label: "Low" },
     { score: 2.0, level: "low", label: "Low" },
@@ -148,13 +186,30 @@ export async function GET(request: Request) {
   for (let i = 0; i < days; i++) {
     const d = new Date(fallbackStart + "T12:00:00")
     d.setDate(d.getDate() + i)
+    const dateStr = toLocalDateStr(d)
     const risk = levels[i % levels.length]
+    const month = d.getMonth() + 1
+    const seasonIdx = Math.floor(((month % 12) + 3) / 3) - 1
+    const season = SEASONS[seasonIdx] ?? "—"
     fallbackDays.push({
-      date: toLocalDateStr(d),
+      date: dateStr,
       risk: { score: toFloatScore(risk.score), level: risk.level, label: risk.label },
       activeRiskFactors: [],
-      daily: {},
+      daily: {
+        date: dateStr,
+        day_of_week: WEEKDAY_NAMES[d.getDay()],
+        season,
+        AQI: null,
+        PM2_5_mean: null,
+        PM2_5_max: null,
+        temp_min: null,
+        temp_max: null,
+        humidity: null,
+        pollen_tree: null,
+        pollen_grass: null,
+        pollen_weed: null,
+      },
     })
   }
-  return NextResponse.json({ start: fallbackStart, days: fallbackDays })
+  return NextResponse.json({ start: fallbackStart, days: fallbackDays, fromModel: false })
 }
