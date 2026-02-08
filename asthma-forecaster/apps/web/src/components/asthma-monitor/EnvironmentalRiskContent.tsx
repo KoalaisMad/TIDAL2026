@@ -154,24 +154,41 @@ export function EnvironmentalRiskContent() {
     return () => controller.abort()
   }, [weekDays, location])
 
+  // Cache recommendations by date and riskScore to avoid repeated calls
+  const recsCache = React.useRef(new Map<string, Recommendation[]>())
   React.useEffect(() => {
-    if (!selectedDayData?.risk?.level) return
+    if (!selectedDayData?.risk?.level || selectedDayData?.risk?.score == null) return
+    const cacheKey = `${selectedDate}|${selectedDayData.risk.score}`
+    const cached = recsCache.current.get(cacheKey)
+    if (cached) {
+      setRecs(cached)
+      setRecsLoading(false)
+      return
+    }
     const controller = new AbortController()
     setRecsLoading(true)
+    // Prepare apiDaily param
+    const apiDaily = selectedDayData.daily ? encodeURIComponent(JSON.stringify(selectedDayData.daily)) : ""
     fetch(
-      `/api/recommendations?date=${encodeURIComponent(selectedDate)}&riskLevel=${encodeURIComponent(
-        selectedDayData.risk.level
-      )}`,
-      { signal: controller.signal }
+      `/api/recommendations?riskScore=${encodeURIComponent(selectedDayData.risk.score)}${apiDaily ? `&apiDaily=${apiDaily}` : ""}`,
+      {
+        signal: controller.signal,
+        headers: {
+          "x-api-key": "demo-key"
+        }
+      }
     )
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: ApiRecommendationsResponse | null) => {
-        if (data?.recommendations) setRecs(data.recommendations)
+      .then((data: any) => {
+        if (data?.recommendations) {
+          setRecs(data.recommendations)
+          recsCache.current.set(cacheKey, data.recommendations)
+        }
       })
       .catch(() => {})
       .finally(() => setRecsLoading(false))
     return () => controller.abort()
-  }, [selectedDate, selectedDayData?.risk?.level])
+  }, [selectedDate, selectedDayData?.risk?.level, selectedDayData?.risk?.score, selectedDayData?.daily])
 
   return (
     <>

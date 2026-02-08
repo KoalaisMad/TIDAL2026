@@ -27,7 +27,6 @@ export async function GET(request: Request) {
 
   // --- API key check (optional) ---
   const apiKey = request.headers.get("x-api-key");
-  console.log(VALID_API_KEY, apiKey);
   if (VALID_API_KEY && apiKey !== VALID_API_KEY) {
     return NextResponse.json({ error: "Unauthorized: invalid API key." }, { status: 401 });
   }
