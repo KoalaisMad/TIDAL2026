@@ -1,7 +1,5 @@
 "use client"
 
-import * as React from "react"
-
 import { cn } from "@/lib/utils"
 
 type RiskGaugeProps = {
@@ -15,13 +13,12 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n))
 }
 
-export function RiskGauge({ value, max = 10, label, className }: RiskGaugeProps) {
+export function RiskGauge({ value, max = 5, label, className }: RiskGaugeProps) {
   const size = 240
   const stroke = 24
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
 
-  // top half-ish arc, matching the screenshot
   const startAngle = 180
   const sweepAngle = 180
   const progress = clamp(value / max, 0, 1)
