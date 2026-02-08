@@ -203,6 +203,8 @@ def main():
     else:
         flare_thresh = float(ds["trends_value"].quantile(args.flare_percentile / 100.0))
         ds["flare_day"] = (ds["trends_value"] >= flare_thresh).astype(int)
+    # Risk 1-5: quintiles of trends (1=lowest risk, 5=highest)
+    ds["risk"] = pd.qcut(ds["trends_value"], q=5, labels=[1, 2, 3, 4, 5]).astype(int)
     ds = ds.rename(columns={"trends_value": f"google_trends_{args.keyword.replace(' ', '_')}"})
 
     # Match your example column naming (optional)
@@ -222,7 +224,8 @@ def main():
         "pollen_tree","pollen_grass","pollen_weed",
         "day_of_week","month","season","holiday_flag",
         f"google_trends_{args.keyword.replace(' ', '_')}",
-        "flare_day"
+        "flare_day",
+        "risk",
     ]
     # Keep any that are missing in case APIs change
     cols = [c for c in cols if c in ds.columns] + [c for c in ds.columns if c not in cols]
@@ -235,6 +238,7 @@ def main():
         print(f"Flare days (trends >= {args.threshold}): {n_flare} / {len(ds)}")
     else:
         print(f"Flare days (top {100 - args.flare_percentile:.0f}%, threshold >= {flare_thresh:.1f}): {n_flare} / {len(ds)}")
+    print(f"Risk 1-5 distribution: {dict(ds['risk'].value_counts().sort_index())}")
 
 
 if __name__ == "__main__":
