@@ -5,6 +5,7 @@ import { Droplets, Sprout, Thermometer, Wind } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
+import { useSession, signIn } from "next-auth/react"
 
 import { DateStrip } from "./DateStrip"
 import { Recommendations } from "./Recommendations"
@@ -48,6 +49,7 @@ function toIsoDateForSelectedDay(selectedDayId: string) {
 
 export function EnvironmentalRiskContent() {
   const router = useRouter()
+  const { data: session, status } = useSession()
   const [selectedDayId, setSelectedDayId] = React.useState<string>("sat")
 
   const [riskScore, setRiskScore] = React.useState<number>(3)
@@ -122,7 +124,20 @@ export function EnvironmentalRiskContent() {
           size="pill"
           className="w-full md:w-fit md:px-12"
           onClick={() => {
-            router.push("/asthma-monitor/personalized")
+            // Check authentication before navigating
+            if (status === "loading") {
+              return
+            }
+            
+            if (!session) {
+              // Not authenticated, redirect to sign-in
+              signIn("google", {
+                callbackUrl: "/breathe-well/personalized",
+              })
+            } else {
+              // Authenticated, navigate to personalized page
+              router.push("/breathe-well/personalized")
+            }
           }}
         >
           Get Personalized Risk
