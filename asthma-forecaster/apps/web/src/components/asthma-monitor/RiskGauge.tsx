@@ -16,8 +16,8 @@ function clamp(n: number, min: number, max: number) {
 }
 
 export function RiskGauge({ value, max = 10, label, className }: RiskGaugeProps) {
-  const size = 220
-  const stroke = 18
+  const size = 240
+  const stroke = 24
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
 
@@ -29,7 +29,7 @@ export function RiskGauge({ value, max = 10, label, className }: RiskGaugeProps)
   const dashOffset = dash * (1 - progress)
 
   return (
-    <div className={cn("relative mx-auto w-full max-w-[260px]", className)}>
+    <div className={cn("relative mx-auto w-full max-w-[280px] rounded-3xl bg-card p-6 shadow-md", className)}>
       <svg
         width={size}
         height={size}
@@ -44,11 +44,11 @@ export function RiskGauge({ value, max = 10, label, className }: RiskGaugeProps)
             cy={size / 2}
             r={r}
             fill="none"
-            stroke="var(--border)"
+            stroke="var(--muted)"
             strokeWidth={stroke}
             strokeLinecap="round"
             strokeDasharray={`${dash} ${c}`}
-            opacity={0.4}
+            opacity={0.5}
           />
           <circle
             cx={size / 2}
@@ -65,11 +65,11 @@ export function RiskGauge({ value, max = 10, label, className }: RiskGaugeProps)
       </svg>
 
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <div className="text-4xl font-semibold leading-none">{value}</div>
-        <div className="mt-1 text-sm font-semibold text-muted-foreground">
+        <div className="text-5xl font-bold leading-none">{value}</div>
+        <div className="mt-2 text-base font-medium text-muted-foreground">
           {label}
         </div>
-        <div className="text-sm font-semibold text-muted-foreground">Risk</div>
+        <div className="text-sm font-medium text-muted-foreground">Risk</div>
       </div>
     </div>
   )

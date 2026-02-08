@@ -50,39 +50,53 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.13 0.028 261.692);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.028 261.692);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.028 261.692);
-  /* Limited palette: neutral grays + a single coral "brand" color */
-  --primary: oklch(0.72 0.17 32);
+  --radius: 1rem;
+  /* Orangey-peach background with gradient tones */
+  --background: oklch(0.93 0.035 35);
+  --background-gradient-from: oklch(0.95 0.04 40);
+  --background-gradient-to: oklch(0.91 0.03 30);
+  /* Muted gray-brown text for body */
+  --foreground: oklch(0.42 0.02 35);
+  /* Warm cream content cards with peachy tint */
+  --card: oklch(0.97 0.025 38);
+  --card-gradient-from: oklch(0.98 0.03 42);
+  --card-gradient-to: oklch(0.96 0.02 34);
+  --card-foreground: oklch(0.32 0.02 35);
+  --popover: oklch(0.97 0.025 38);
+  --popover-foreground: oklch(0.32 0.02 35);
+  /* Vibrant coral-orange accent */
+  --primary: oklch(0.68 0.15 35);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.967 0.003 264.542);
-  --secondary-foreground: oklch(0.21 0.034 264.665);
-  --muted: oklch(0.967 0.003 264.542);
-  --muted-foreground: oklch(0.551 0.027 264.364);
-  --accent: oklch(0.96 0.03 32);
-  --accent-foreground: oklch(0.21 0.034 264.665);
+  /* Soft secondary with peach gradient */
+  --secondary: oklch(0.95 0.03 38);
+  --secondary-foreground: oklch(0.32 0.02 35);
+  /* Muted backgrounds with orangey-peach tint */
+  --muted: oklch(0.91 0.03 36);
+  --muted-gradient-from: oklch(0.92 0.035 38);
+  --muted-gradient-to: oklch(0.90 0.025 34);
+  --muted-foreground: oklch(0.52 0.025 35);
+  /* Golden peachy accent */
+  --accent: oklch(0.86 0.09 55);
+  --accent-foreground: oklch(0.32 0.02 35);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.928 0.006 264.531);
-  --input: oklch(0.928 0.006 264.531);
+  /* Soft borders with peach tint */
+  --border: oklch(0.87 0.025 36);
+  --input: oklch(0.87 0.025 36);
   --ring: var(--primary);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0.002 247.839);
-  --sidebar-foreground: oklch(0.13 0.028 261.692);
-  --sidebar-primary: oklch(0.21 0.034 264.665);
-  --sidebar-primary-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-accent: oklch(0.967 0.003 264.542);
-  --sidebar-accent-foreground: oklch(0.21 0.034 264.665);
-  --sidebar-border: oklch(0.928 0.006 264.531);
-  --sidebar-ring: oklch(0.707 0.022 261.325);
+  /* Chart colors with warm orangey palette */
+  --chart-1: oklch(0.68 0.15 35);
+  --chart-2: oklch(0.73 0.12 45);
+  --chart-3: oklch(0.70 0.13 40);
+  --chart-4: oklch(0.86 0.09 55);
+  --chart-5: oklch(0.80 0.11 50);
+  --sidebar: oklch(0.95 0.03 38);
+  --sidebar-foreground: oklch(0.32 0.02 35);
+  --sidebar-primary: oklch(0.68 0.15 35);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.91 0.03 36);
+  --sidebar-accent-foreground: oklch(0.32 0.02 35);
+  --sidebar-border: oklch(0.87 0.025 36);
+  --sidebar-ring: oklch(0.68 0.15 35);
 }
 
 .dark {
@@ -125,6 +139,17 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "kern" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight;
+  }
+  
+  p {
+    @apply leading-relaxed;
   }
 }
 
@@ -136,5 +161,21 @@
   }
   .scrollbar-none::-webkit-scrollbar {
     display: none; /* Chrome/Safari */
+  }
+  
+  /* Dynamic gradient background for visual interest - modern mesh style */
+  .bg-gradient-warm {
+    background: 
+      radial-gradient(at 0% 0%, oklch(0.96 0.06 45) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, oklch(0.94 0.05 25) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, oklch(0.92 0.04 50) 0px, transparent 50%),
+      radial-gradient(at 0% 100%, oklch(0.95 0.05 35) 0px, transparent 50%),
+      linear-gradient(135deg, 
+        oklch(0.95 0.045 40) 0%, 
+        oklch(0.93 0.04 35) 25%,
+        oklch(0.91 0.035 30) 50%,
+        oklch(0.93 0.04 38) 75%,
+        oklch(0.94 0.045 42) 100%
+      );
   }
 }

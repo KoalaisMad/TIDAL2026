@@ -117,21 +117,21 @@ export function AsthmaMonitorScreen() {
           />
 
           {/* Mobile-first: single column; Desktop: use space with a 2-col grid */}
-          <div className="grid gap-6 md:grid-cols-2 md:items-start">
-            <div className="space-y-6">
+          <div className="grid gap-8 md:grid-cols-2 md:items-start">
+            <div className="space-y-8">
               <RiskGauge value={riskScore} label={riskLabel} />
               <RiskFactors items={activeRiskFactors} />
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-8">
               <Recommendations items={recs} />
             </div>
           </div>
 
-          <div className="sticky bottom-4 flex justify-center pt-2 md:static">
+          <div className="sticky bottom-6 flex justify-center pt-4 md:static">
             <Button
               size="pill"
-              className="w-full shadow-sm md:w-fit md:px-10"
+              className="w-full md:w-fit md:px-12"
               onClick={() => {
                 // TODO(api): Hook up navigation / fetch personalized risk.
                 setTab("personalized")

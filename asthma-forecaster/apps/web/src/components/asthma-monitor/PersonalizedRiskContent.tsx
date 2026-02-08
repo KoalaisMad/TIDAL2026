@@ -10,26 +10,26 @@ export function PersonalizedRiskContent() {
 
   return (
     <>
-      <Card className="p-6">
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Personalized Risk Assessment</h2>
-          <p className="text-muted-foreground">
+      <Card className="p-8">
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold">Personalized Risk Assessment</h2>
+          <p className="text-base text-muted-foreground leading-relaxed">
             This section will provide personalized asthma risk information based on your
             health profile and triggers.
           </p>
-          <div className="rounded-lg border-2 border-dashed border-muted p-8 text-center">
-            <p className="text-sm text-muted-foreground">
+          <div className="rounded-3xl border-2 border-dashed border-muted/50 bg-muted/20 p-12 text-center">
+            <p className="text-sm font-medium text-muted-foreground">
               Personalized content coming soon...
             </p>
           </div>
         </div>
       </Card>
 
-      <div className="sticky bottom-4 flex justify-center pt-2 md:static">
+      <div className="sticky bottom-6 flex justify-center pt-4 md:static">
         <Button
           size="pill"
           variant="outline"
-          className="w-full shadow-sm md:w-fit md:px-10"
+          className="w-full md:w-fit md:px-12"
           onClick={() => {
             router.push("/asthma-monitor/environmental")
           }}

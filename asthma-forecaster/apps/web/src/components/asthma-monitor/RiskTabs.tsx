@@ -19,20 +19,20 @@ export function RiskTabs({ value, onValueChange, className }: RiskTabsProps) {
       onValueChange={(v) => onValueChange(v as RiskTabsProps["value"])}
       className={cn("w-full", className)}
     >
-      <TabsList className="w-full justify-between bg-transparent p-0">
+      <TabsList className="w-full justify-between bg-transparent p-0 gap-6">
         <TabsTrigger
           value="environmental"
-          className="rounded-none bg-transparent px-0 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+          className="rounded-none bg-transparent px-0 text-base font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:font-bold"
         >
           Environmental Risk
         </TabsTrigger>
 
         <TabsTrigger
           value="personalized"
-          className="rounded-none bg-transparent px-0 text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+          className="rounded-none bg-transparent px-0 text-base font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:font-bold"
         >
-          <span className="inline-flex items-center gap-1">
-            Personalized Risk <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          <span className="inline-flex items-center gap-2">
+            Personalized Risk <ArrowRight className="h-5 w-5" aria-hidden="true" />
           </span>
         </TabsTrigger>
       </TabsList>
