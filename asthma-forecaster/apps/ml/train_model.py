@@ -8,6 +8,7 @@ air quality, and recent symptom score. Saves a joblib model for use by main.py.
 
 Usage (from repo root or apps/ml):
   python -m apps.ml.train_model [--out model.joblib] [--db asthma]
+  python -m apps.ml.train_model --charts-only   # Generate presentation charts only; do not save model
   Set MONGODB_URI and optionally ALLERGY_MODEL_PATH in .env.
 """
 from __future__ import annotations
@@ -33,6 +34,13 @@ import joblib
 import numpy as np
 from pymongo import MongoClient
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    roc_auc_score,
+    roc_curve,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -120,12 +128,136 @@ def load_training_data(db, location_key: str | None = None) -> tuple[list[list[f
     return X_rows, y_list
 
 
+def save_presentation_charts(
+    out_dir: Path,
+    model,
+    feature_order: list,
+    X_train,
+    X_test,
+    y_train,
+    y_test,
+    n_train: int,
+    n_test: int,
+) -> None:
+    """Generate presentation charts explaining model training. Requires matplotlib."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    y_pred = model.predict(X_test)
+    y_prob = model.predict_proba(X_test)[:, 1] if hasattr(model, "predict_proba") else None
+    target_names = ["Non-severe", "Severe"]
+
+    # 1. Train/test split
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.bar(["Train", "Test"], [n_train, n_test], color=["#2ecc71", "#3498db"], edgecolor="black")
+    ax.set_ylabel("Number of samples")
+    ax.set_title("Stratified train/test split (allergy severity model)")
+    for i, v in enumerate([n_train, n_test]):
+        ax.text(i, v + max(n_train, n_test) * 0.02, str(v), ha="center", fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(out_dir / "01_train_test_split.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # 2. Target distribution
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    for ax, y, label in zip(axes, [y_train, y_test], ["Train", "Test"]):
+        unique, counts = np.unique(y, return_counts=True)
+        names = [target_names[i] for i in unique]
+        ax.bar(names, counts, color="#9b59b6", edgecolor="black")
+        ax.set_title(f"Target distribution ({label})")
+        ax.set_ylabel("Count")
+    plt.suptitle("Severe vs non-severe (symptomScore >= 4)")
+    plt.tight_layout()
+    plt.savefig(out_dir / "02_target_distribution.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # 3. Feature coefficients (LogisticRegression)
+    if hasattr(model, "coef_") and model.coef_.size > 0:
+        coef = model.coef_.ravel()
+        order = np.argsort(np.abs(coef))[-15:]
+        fig, ax = plt.subplots(figsize=(8, max(4, len(order) * 0.35)))
+        ax.barh([feature_order[i] for i in order], coef[order], color="#3498db", edgecolor="black")
+        ax.set_xlabel("Coefficient")
+        ax.set_title("Feature coefficients (Logistic Regression)")
+        ax.axvline(0, color="black", linewidth=0.5)
+        plt.tight_layout()
+        plt.savefig(out_dir / "03_feature_coefficients.png", dpi=150, bbox_inches="tight")
+        plt.close()
+
+    # 4. Confusion matrix
+    cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+    fig, ax = plt.subplots(figsize=(6, 5))
+    im = ax.imshow(cm, cmap="Blues")
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+    ax.set_xticklabels(target_names)
+    ax.set_yticklabels(target_names)
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+    for i in range(2):
+        for j in range(2):
+            ax.text(j, i, str(cm[i, j]), ha="center", va="center", color="white" if cm[i, j] > cm.max() / 2 else "black")
+    plt.colorbar(im, ax=ax, label="Count")
+    ax.set_title("Confusion matrix (test set)")
+    plt.tight_layout()
+    plt.savefig(out_dir / "04_confusion_matrix.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # 5. ROC curve
+    if y_prob is not None and len(np.unique(y_test)) > 1:
+        fpr, tpr, _ = roc_curve(y_test, y_prob)
+        auc = roc_auc_score(y_test, y_prob)
+        fig, ax = plt.subplots(figsize=(6, 5))
+        ax.plot(fpr, tpr, color="#e74c3c", lw=2, label=f"ROC (AUC = {auc:.3f})")
+        ax.plot([0, 1], [0, 1], "k--", lw=1)
+        ax.set_xlabel("False positive rate")
+        ax.set_ylabel("True positive rate")
+        ax.set_title("ROC curve (test set)")
+        ax.legend()
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        plt.tight_layout()
+        plt.savefig(out_dir / "05_roc_curve.png", dpi=150, bbox_inches="tight")
+        plt.close()
+
+    # 6. Metrics summary
+    acc = accuracy_score(y_test, y_pred)
+    f1_macro = f1_score(y_test, y_pred, average="macro", zero_division=0)
+    fig, ax = plt.subplots(figsize=(5, 3))
+    ax.bar(["Accuracy", "Macro F1"], [acc, f1_macro], color=["#27ae60", "#f39c12"], edgecolor="black")
+    ax.set_ylabel("Score")
+    ax.set_ylim(0, 1)
+    ax.set_title("Test set metrics")
+    for i, v in enumerate([acc, f1_macro]):
+        ax.text(i, v + 0.03, f"{v:.3f}", ha="center", fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(out_dir / "06_metrics_summary.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    print(f"Presentation charts saved to {out_dir}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Train allergy severity model")
     parser.add_argument("--out", type=str, default="allergy_model.joblib", help="Output model path")
     parser.add_argument("--db", type=str, default="asthma", help="MongoDB database name")
     parser.add_argument("--location-key", type=str, help="Filter env by locationKey")
     parser.add_argument("--min-samples", type=int, default=20, help="Minimum samples to train")
+    parser.add_argument(
+        "--charts-only",
+        action="store_true",
+        help="Generate presentation charts only; do not save the model (current models are not replaced)",
+    )
+    parser.add_argument(
+        "--charts-dir",
+        type=str,
+        default=None,
+        help="Directory for chart output when using --charts-only (default: presentation_charts in script dir)",
+    )
     args = parser.parse_args()
 
     uri = os.environ.get("MONGODB_URI")
@@ -155,6 +287,22 @@ def main() -> int:
     model.fit(X_train_s, y_train)
     acc = (model.predict(X_test_s) == y_test).mean()
     print(f"Test accuracy: {acc:.3f}")
+
+    if args.charts_only:
+        charts_dir = Path(args.charts_dir) if args.charts_dir else Path(__file__).resolve().parent / "presentation_charts"
+        save_presentation_charts(
+            charts_dir,
+            model=model,
+            feature_order=FEATURE_ORDER,
+            X_train=X_train_s,
+            X_test=X_test_s,
+            y_train=y_train,
+            y_test=y_test,
+            n_train=len(y_train),
+            n_test=len(y_test),
+        )
+        print("Charts-only run: model was not saved (current models unchanged).")
+        return 0
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)

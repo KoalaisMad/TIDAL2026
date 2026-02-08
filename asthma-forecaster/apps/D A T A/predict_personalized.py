@@ -131,6 +131,83 @@ def load_users_from_mongo(client: MongoClient) -> tuple[pd.DataFrame, pd.DataFra
     return prof, checkins
 
 
+def _debug_log(msg: str, debug: bool = False) -> None:
+    """Print to stderr when --debug is used (caller passes args.debug or True)."""
+    if debug:
+        print(f"[predict_personalized debug] {msg}", file=sys.stderr, flush=True)
+
+
+def _users_with_no_checkins(df_future: pd.DataFrame) -> set:
+    """Users whose rows all have zero symptoms (no check-ins or all zeros)."""
+    symptom_cols = ["wheeze", "cough", "chestTightness", "exerciseMinutes"]
+    if not all(c in df_future.columns for c in symptom_cols):
+        return set()
+    no_checkin = set()
+    for uid, grp in df_future.groupby("user_id"):
+        if (grp[symptom_cols].fillna(0) == 0).all().all():
+            no_checkin.add(uid)
+    return no_checkin
+
+
+def _env_only_scores_for_dates(
+    env_df: pd.DataFrame,
+    date_strs: list[str],
+    script_dir: Path,
+) -> dict[str, float] | None:
+    """Predict 1–5 risk scores using the environmental (non-personalized) flare model. Returns date_str -> score or None if model missing."""
+    flare_path = script_dir / "flare_model.joblib"
+    if not flare_path.exists():
+        return None
+    try:
+        bundle = joblib.load(flare_path)
+    except Exception:
+        return None
+    model = bundle.get("model")
+    scaler = bundle.get("scaler")
+    feature_order = bundle.get("feature_order") or []
+    le_dow = bundle.get("le_dow")
+    le_season = bundle.get("le_season")
+    if not model or not feature_order:
+        return None
+    env = env_df.copy()
+    env["date"] = pd.to_datetime(env["date"])
+    env = env[env["date"].dt.strftime("%Y-%m-%d").isin(date_strs)].sort_values("date").drop_duplicates(subset=["date"]).reset_index(drop=True)
+    if len(env) == 0:
+        return None
+    for c in feature_order:
+        if c not in env.columns:
+            env[c] = 0
+    if le_dow is not None and "day_of_week" in env.columns:
+        def _enc_dow(x):
+            s = str(x).strip() if pd.notna(x) else ""
+            if s in getattr(le_dow, "classes_", []):
+                return le_dow.transform([s])[0]
+            return 0
+        env["day_of_week"] = env["day_of_week"].apply(_enc_dow)
+    if le_season is not None and "season" in env.columns:
+        def _enc_season(x):
+            s = str(x).strip().lower() if pd.notna(x) else ""
+            if s in getattr(le_season, "classes_", []):
+                return le_season.transform([s])[0]
+            return 0
+        env["season"] = env["season"].apply(_enc_season)
+    X = env[feature_order].fillna(0).astype(float)
+    if scaler is not None:
+        X = scaler.transform(X)
+    proba = model.predict_proba(X)
+    classes = list(getattr(model, "classes_", []))
+    class_1_idx = classes.index(1) if (proba.shape[1] > 1 and 1 in classes) else 0
+    p_flare = proba[:, class_1_idx]
+    scores_1_5 = np.clip(1.0 + 4.0 * p_flare, 1.0, 5.0)
+    date_to_score = {}
+    for pos in range(min(len(env), len(scores_1_5))):
+        row = env.iloc[pos]
+        d = row["date"]
+        ds = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10]
+        date_to_score[ds] = round(float(scores_1_5[pos]), 2)
+    return date_to_score if date_to_score else None
+
+
 def enrich_dataset(env_df: pd.DataFrame, prof: pd.DataFrame, checkins: pd.DataFrame) -> pd.DataFrame:
     """Same logic as modelc.enrich_dataset: merge profile + checkins, add lags."""
     df = env_df.copy()
@@ -502,6 +579,8 @@ def main() -> int:
     parser.add_argument("--days", type=int, default=7, help="Number of days to predict (default: 7)")
     parser.add_argument("--lat", type=float, default=37.77, help="Latitude for env if fetching forecast")
     parser.add_argument("--lon", type=float, default=-122.42, help="Longitude for env if fetching forecast")
+    parser.add_argument("--no-cache", action="store_true", help="Ignore cached predictions and recompute (use with --debug to test env fallback)")
+    parser.add_argument("--debug", action="store_true", help="Print diagnostic info to stderr (no-check-in users, env fallback, scores)")
     args = parser.parse_args()
 
     model_path = Path(args.model)
@@ -522,6 +601,8 @@ def main() -> int:
     pipeline = bundle.get("pipeline")
     feature_cols = bundle.get("feature_cols", [])
     target_col = bundle.get("target_col", "risk")
+    le_dow = bundle.get("le_dow")
+    le_season = bundle.get("le_season")
     if pipeline is None or not feature_cols:
         print("Invalid model bundle: missing pipeline or feature_cols", file=sys.stderr)
         return 1
@@ -557,8 +638,12 @@ def main() -> int:
     date_strs = [d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10] for d in future_dates]
 
     # Try cache first: if we have predictions for all (user_id, date), return them
-    cached = load_cached_predictions(client, user_ids, date_strs, target_col)
+    cached = None if getattr(args, "no_cache", False) else load_cached_predictions(client, user_ids, date_strs, target_col)
     if cached is not None:
+        if getattr(args, "debug", False):
+            sample = [r for r in cached[:7]] if cached else []
+            _debug_log(f"CACHE: Using {len(cached)} cached predictions. Sample: {sample}", debug=True)
+            _debug_log("To force recompute (and use env fallback for no-check-in users), run with --no-cache", debug=True)
         out_json = json.dumps(cached, indent=2)
         if args.out == "-":
             print(out_json)
@@ -590,16 +675,46 @@ def main() -> int:
     if df_future.empty:
         df_future = df.tail(len(user_ids) * n_days)
 
+    # Users with no check-ins get env-only scores (so scores vary by day instead of always 1)
+    no_checkin_users = _users_with_no_checkins(df_future)
+    env_only_by_date = None
+    if no_checkin_users:
+        env_only_by_date = _env_only_scores_for_dates(env_df, date_strs, _script_dir)
+    if getattr(args, "debug", False):
+        _debug_log(f"user_ids: {user_ids}", debug=True)
+        _debug_log(f"no_checkin_users (will use env fallback): {sorted(no_checkin_users)}", debug=True)
+        flare_path = _script_dir / "flare_model.joblib"
+        _debug_log(f"flare_model.joblib path: {flare_path} exists={flare_path.exists()}", debug=True)
+        if env_only_by_date:
+            _debug_log(f"env_only_by_date (date -> score): {env_only_by_date}", debug=True)
+        else:
+            _debug_log("env_only_by_date: None (flare model missing or failed)", debug=True)
+
     # Align to saved feature_cols: add missing cols with 0, drop extra
     for c in feature_cols:
         if c not in df_future.columns:
             df_future[c] = 0
+    # Encode day_of_week and season if model was trained with LabelEncoders (pgood.py / train_model.py)
+    if le_dow is not None and "day_of_week" in df_future.columns and "day_of_week" in feature_cols:
+        def _encode_dow(x):
+            s = str(x).strip() if pd.notna(x) else ""
+            if s in le_dow.classes_:
+                return le_dow.transform([s])[0]
+            return 0
+        df_future["day_of_week"] = df_future["day_of_week"].apply(_encode_dow)
+    if le_season is not None and "season" in df_future.columns and "season" in feature_cols:
+        def _encode_season(x):
+            s = str(x).strip() if pd.notna(x) else ""
+            if s in le_season.classes_:
+                return le_season.transform([s])[0]
+            return 0
+        df_future["season"] = df_future["season"].apply(_encode_season)
     X = df_future[feature_cols]
-    # Handle object columns (OneHotEncoder)
+    # Ensure numeric (older bundles may have object cols)
     for c in feature_cols:
         if X[c].dtype == object:
             X = X.copy()
-            X[c] = X[c].astype(str).fillna("")
+            X[c] = pd.to_numeric(X[c], errors="coerce").fillna(0)
     try:
         # Use predict_proba; output is always risk score 1–5 (pgood.py contract)
         probas = pipeline.predict_proba(X)
@@ -638,6 +753,19 @@ def main() -> int:
             target_col: round(float(risk_score), 2),
             "probability": round(float(probability), 2),
         })
+
+    # For users with no check-ins, replace with env-only scores so they see day-to-day variation
+    sample_before = [r[target_col] for r in out_records[:7]] if getattr(args, "debug", False) else None
+    replaced_count = 0
+    if no_checkin_users and env_only_by_date:
+        for r in out_records:
+            if r["user_id"] in no_checkin_users and r["date"] in env_only_by_date:
+                r[target_col] = env_only_by_date[r["date"]]
+                replaced_count += 1
+    if getattr(args, "debug", False):
+        _debug_log(f"Personalized model scores (first 7 rows, before fallback): {sample_before}", debug=True)
+        _debug_log(f"Replaced {replaced_count} records with env-only scores", debug=True)
+        _debug_log(f"Output scores (first 7 rows): {[r[target_col] for r in out_records[:7]]}", debug=True)
 
     # Store predictions in DB so next run can use cache
     try:

@@ -69,6 +69,27 @@ Run the frontend from **TIDAL2026** (or set `TIDAL_ROOT` to the TIDAL2026 direct
   cd TIDAL2026/asthma-forecaster/apps/web && npm run dev
   ```
 
+## Two risk pipelines (do not mix)
+
+| Pipeline | Data | Train script | Model file | Used by |
+|----------|------|--------------|------------|---------|
+| **Non-personalized** (environmental tab) | `D A T A/dataset_two_weeks.csv` (env only) | `D A T A/train_model.py` | `D A T A/flare_model.joblib` | `predict_flare.py` → `/api/week`, `/api/risk` |
+| **Personalized** (personalized tab) | `D A T A/personalized_synthetic_data.csv` (daily chars + flare_day) | `apps/ml/pgood.py` | `D A T A/personalized_flare_model.joblib` | `predict_personalized.py` → `/api/risk/personalized` |
+
+Personalized data has the same daily characteristics as the app check-in: wheeze, cough, chestTightness, exerciseMinutes, linked to flare_day. Generate it, then train the personalized model:
+
+```bash
+cd TIDAL2026
+
+# 1. Generate ~300 synthetic rows (daily chars + flare_day)
+PYTHONPATH=asthma-forecaster python3 -m apps.ml.generate_personalized_data
+
+# 2. Train personalized model (same procedure as D A T A/train_model.py)
+PYTHONPATH=asthma-forecaster python3 -m apps.ml.pgood
+```
+
+Output: `D A T A/personalized_flare_model.joblib`. The personalized tab uses this; the environmental tab uses `flare_model.joblib` only.
+
 ## Other scripts
 
 - **main.py** – Asthma flare model (uses `data.py`, optional `symptom_daily` labels):  
