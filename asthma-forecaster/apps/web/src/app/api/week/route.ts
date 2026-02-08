@@ -122,7 +122,7 @@ export async function GET(request: Request) {
       cwd: tidalRoot,
       encoding: "utf-8",
       env: envWithPath,
-      timeout: 30000,
+      timeout: 60000,
     })
     if (result.status === 0 && typeof result.stdout === "string" && result.stdout.trim()) break
     if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") continue

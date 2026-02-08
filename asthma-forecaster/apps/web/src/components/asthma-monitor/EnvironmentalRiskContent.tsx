@@ -62,6 +62,28 @@ const ICONS: Record<ApiRiskFactor["iconKey"], RiskFactor["icon"]> = {
   droplets: Droplets,
 }
 
+function celsiusToFahrenheit(c: number): number {
+  return Math.round((c * 9) / 5 + 32)
+}
+
+type PollenSeverityLevel = "Low" | "Moderate" | "High" | "—"
+
+/** Map numeric pollen index to a severity label (handles 0–5 and 0–50 scales). */
+function pollenSeverity(value: number | null | undefined): PollenSeverityLevel {
+  if (value == null || Number.isNaN(value)) return "—"
+  const n = value <= 12 ? value : value / 5
+  if (n <= 3) return "Low"
+  if (n <= 7) return "Moderate"
+  return "High"
+}
+
+function pollenSeverityClass(level: PollenSeverityLevel): string {
+  if (level === "Low") return "text-emerald-600 dark:text-emerald-400"
+  if (level === "Moderate") return "text-amber-600 dark:text-amber-400"
+  if (level === "High") return "text-destructive"
+  return "text-muted-foreground"
+}
+
 /** Use selected day id as date when it is YYYY-MM-DD, else from week day or today. */
 function dateForSelectedDay(selectedDayId: string, weekDays: DayItem[]): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(selectedDayId)) return selectedDayId
@@ -222,25 +244,75 @@ export function EnvironmentalRiskContent() {
           <RiskFactors items={activeRiskFactors} />
           {selectedDayData != null && (
             <div className="rounded-2xl border bg-card p-4 text-sm">
-              <h3 className="mb-2 font-medium">Data for this day</h3>
+              <h3 className="mb-3 font-medium">Conditions for this day</h3>
               {fromModel === false && (
-                <p className="text-muted-foreground mb-2 text-xs">Estimated. Run the model (see below) for real environmental data.</p>
+                <p className="text-muted-foreground mb-3 text-xs">Estimated. Run the model (see below) for real environmental data.</p>
               )}
               {daily && (daily.day_of_week != null || daily.season != null || daily.AQI != null || daily.PM2_5_mean != null || daily.temp_min != null || daily.humidity != null) ? (
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
-                  {daily.AQI != null && <><dt className="text-muted-foreground">AQI</dt><dd>{daily.AQI}</dd></>}
-                  {daily.PM2_5_mean != null && <><dt className="text-muted-foreground">PM2.5 mean</dt><dd>{daily.PM2_5_mean}</dd></>}
-                  {daily.PM2_5_max != null && <><dt className="text-muted-foreground">PM2.5 max</dt><dd>{daily.PM2_5_max}</dd></>}
-                  {daily.day_of_week != null && <><dt className="text-muted-foreground">Day</dt><dd>{daily.day_of_week}</dd></>}
-                  {daily.season != null && <><dt className="text-muted-foreground">Season</dt><dd>{daily.season}</dd></>}
+                <ul className="space-y-3">
+                  {daily.day_of_week != null && (
+                    <li className="flex justify-between gap-4 border-b border-border/60 pb-2">
+                      <span className="text-muted-foreground">Day</span>
+                      <span className="font-medium capitalize">{daily.day_of_week}</span>
+                    </li>
+                  )}
+                  {daily.season != null && (
+                    <li className="flex justify-between gap-4 border-b border-border/60 pb-2">
+                      <span className="text-muted-foreground">Season</span>
+                      <span className="font-medium capitalize">{daily.season}</span>
+                    </li>
+                  )}
                   {(daily.temp_min != null || daily.temp_max != null) && (
-                    <><dt className="text-muted-foreground">Temp</dt><dd>{[daily.temp_min, daily.temp_max].filter((t) => t != null).join("–")} °C</dd></>
+                    <li className="flex justify-between gap-4 border-b border-border/60 pb-2">
+                      <span className="text-muted-foreground">Temperature</span>
+                      <span className="font-medium">
+                        {[daily.temp_min, daily.temp_max]
+                          .filter((t): t is number => t != null)
+                          .map(celsiusToFahrenheit)
+                          .join("–")}
+                        °F
+                      </span>
+                    </li>
                   )}
-                  {daily.humidity != null && <><dt className="text-muted-foreground">Humidity</dt><dd>{daily.humidity}%</dd></>}
+                  {daily.AQI != null && (
+                    <li className="flex justify-between gap-4 border-b border-border/60 pb-2">
+                      <span className="text-muted-foreground">Air quality index</span>
+                      <span className="font-medium">{daily.AQI}</span>
+                    </li>
+                  )}
+                  {(daily.PM2_5_mean != null || daily.PM2_5_max != null) && (
+                    <li className="flex justify-between gap-4 border-b border-border/60 pb-2">
+                      <span className="text-muted-foreground">Particle pollution (PM2.5)</span>
+                      <span className="font-medium">
+                        {daily.PM2_5_mean != null && daily.PM2_5_max != null
+                          ? `Avg ${daily.PM2_5_mean.toFixed(1)}, high ${daily.PM2_5_max.toFixed(1)}`
+                          : daily.PM2_5_mean != null
+                            ? `Avg ${daily.PM2_5_mean.toFixed(1)}`
+                            : daily.PM2_5_max != null
+                              ? `High ${daily.PM2_5_max.toFixed(1)}`
+                              : "—"}
+                      </span>
+                    </li>
+                  )}
+                  {daily.humidity != null && (
+                    <li className="flex justify-between gap-4 border-b border-border/60 pb-2">
+                      <span className="text-muted-foreground">Humidity</span>
+                      <span className="font-medium">{Math.round(daily.humidity)}%</span>
+                    </li>
+                  )}
                   {(daily.pollen_tree != null || daily.pollen_grass != null || daily.pollen_weed != null) && (
-                    <><dt className="text-muted-foreground">Pollen</dt><dd>Tree {daily.pollen_tree ?? "—"} / Grass {daily.pollen_grass ?? "—"} / Weed {daily.pollen_weed ?? "—"}</dd></>
+                    <li className="flex flex-col gap-1.5 border-b border-border/60 pb-2">
+                      <span className="text-muted-foreground">Pollen levels</span>
+                      <span className="font-medium">
+                        Tree <span className={pollenSeverityClass(pollenSeverity(daily.pollen_tree))}>{pollenSeverity(daily.pollen_tree)}</span>
+                        {" · "}
+                        Grass <span className={pollenSeverityClass(pollenSeverity(daily.pollen_grass))}>{pollenSeverity(daily.pollen_grass)}</span>
+                        {" · "}
+                        Weed <span className={pollenSeverityClass(pollenSeverity(daily.pollen_weed))}>{pollenSeverity(daily.pollen_weed)}</span>
+                      </span>
+                    </li>
                   )}
-                </dl>
+                </ul>
               ) : (
                 <p className="text-muted-foreground text-xs">No environmental data for this day.</p>
               )}

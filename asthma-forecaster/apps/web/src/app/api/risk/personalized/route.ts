@@ -127,7 +127,10 @@ export async function GET() {
     MONGODB_URI: process.env.MONGODB_URI || process.env.MONGO_URI || "",
   }
   const pyCandidates = getPythonCandidates(tidalRoot)
-  let result = spawnSync(pyCandidates[0], [scriptPath, "--out", "-", "--days", "7"], {
+  const debugPersonalized = process.env.DEBUG_PERSONALIZED === "1" || process.env.DEBUG_PERSONALIZED === "true"
+  const noCache = process.env.PERSONALIZED_NO_CACHE === "1" || process.env.PERSONALIZED_NO_CACHE === "true"
+  const pyArgs = [scriptPath, "--out", "-", "--days", "7", ...(noCache ? ["--no-cache"] : []), ...(debugPersonalized ? ["--debug"] : [])]
+  let result = spawnSync(pyCandidates[0], pyArgs, {
     cwd: scriptDir,
     encoding: "utf-8",
     env: spawnEnv,
@@ -136,7 +139,7 @@ export async function GET() {
   for (let i = 1; i < pyCandidates.length && (result.status !== 0 || !(typeof result.stdout === "string" && result.stdout.trim())); i++) {
     const err = result.error as NodeJS.ErrnoException | undefined
     if (err?.code === "ENOENT") {
-      result = spawnSync(pyCandidates[i], [scriptPath, "--out", "-", "--days", "7"], {
+      result = spawnSync(pyCandidates[i], pyArgs, {
         cwd: scriptDir,
         encoding: "utf-8",
         env: spawnEnv,
@@ -147,8 +150,11 @@ export async function GET() {
 
   const stdout = typeof result.stdout === "string" ? result.stdout.trim() : ""
   const stderr = typeof result.stderr === "string" ? result.stderr.trim() : ""
+  if (debugPersonalized && stderr) {
+    console.error("[personalized risk] predict_personalized.py stderr (debug):", stderr)
+  }
   if (result.status !== 0 || !stdout) {
-    if (process.env.NODE_ENV === "development" && stderr) {
+    if (process.env.NODE_ENV === "development" && stderr && !debugPersonalized) {
       console.error("[personalized risk] predict_personalized.py failed:", stderr)
     }
     return fallbackDays(stderr)
