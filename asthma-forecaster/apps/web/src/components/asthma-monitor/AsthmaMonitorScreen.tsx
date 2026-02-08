@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { Droplets, Sprout, Thermometer, Wind } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -12,7 +13,41 @@ import { Recommendations } from "./Recommendations"
 import { RiskFactors } from "./RiskFactors"
 import { RiskGauge } from "./RiskGauge"
 import { RiskTabs } from "./RiskTabs"
-import { recommendations, riskFactors, weekDays } from "./mockData"
+import { weekDays, type Recommendation, type RiskFactor } from "./mockData"
+
+type ApiRiskLevel = "low" | "moderate" | "high"
+type ApiRiskFactor = {
+  id: string
+  label: string
+  iconKey: "sprout" | "wind" | "thermometer" | "droplets"
+}
+type ApiRiskResponse = {
+  date: string
+  risk: { score: number; level: ApiRiskLevel; label: string }
+  activeRiskFactors: ApiRiskFactor[]
+}
+type ApiRecommendationsResponse = {
+  date: string
+  riskLevel: ApiRiskLevel
+  recommendations: Recommendation[]
+}
+
+const ICONS: Record<ApiRiskFactor["iconKey"], RiskFactor["icon"]> = {
+  sprout: Sprout,
+  wind: Wind,
+  thermometer: Thermometer,
+  droplets: Droplets,
+}
+
+function toIsoDateForSelectedDay(selectedDayId: string) {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = today.getMonth()
+  const dayOfMonth =
+    weekDays.find((d) => d.id === selectedDayId)?.dayOfMonth ?? today.getDate()
+  const d = new Date(year, month, dayOfMonth)
+  return d.toISOString().slice(0, 10)
+}
 
 export function AsthmaMonitorScreen() {
   const [tab, setTab] = React.useState<"environmental" | "personalized">(
@@ -20,9 +55,52 @@ export function AsthmaMonitorScreen() {
   )
   const [selectedDayId, setSelectedDayId] = React.useState<string>("sat")
 
-  // TODO(api): Replace with backend-calculated score + label per selected day + selected tab.
-  const riskScore = 3
-  const riskLabel = "Moderate"
+  const [riskScore, setRiskScore] = React.useState<number>(3)
+  const [riskLabel, setRiskLabel] = React.useState<string>("Moderate")
+  const [activeRiskFactors, setActiveRiskFactors] = React.useState<RiskFactor[]>(
+    []
+  )
+  const [recs, setRecs] = React.useState<Recommendation[]>([])
+
+  React.useEffect(() => {
+    const controller = new AbortController()
+    const date = toIsoDateForSelectedDay(selectedDayId)
+
+    async function load() {
+      try {
+        const riskRes = await fetch(`/api/risk?date=${encodeURIComponent(date)}`, {
+          signal: controller.signal,
+        })
+        if (!riskRes.ok) return
+        const riskData = (await riskRes.json()) as ApiRiskResponse
+
+        setRiskScore(riskData.risk.score)
+        setRiskLabel(riskData.risk.label)
+        setActiveRiskFactors(
+          riskData.activeRiskFactors.map((f) => ({
+            id: f.id,
+            label: f.label,
+            icon: ICONS[f.iconKey],
+          }))
+        )
+
+        const recsRes = await fetch(
+          `/api/recommendations?date=${encodeURIComponent(date)}&riskLevel=${encodeURIComponent(
+            riskData.risk.level
+          )}`,
+          { signal: controller.signal }
+        )
+        if (!recsRes.ok) return
+        const recsData = (await recsRes.json()) as ApiRecommendationsResponse
+        setRecs(recsData.recommendations)
+      } catch {
+        // keep existing UI defaults if the stub fetch fails
+      }
+    }
+
+    void load()
+    return () => controller.abort()
+  }, [selectedDayId])
 
   return (
     <div className={layout.pageBg}>
@@ -42,11 +120,11 @@ export function AsthmaMonitorScreen() {
           <div className="grid gap-6 md:grid-cols-2 md:items-start">
             <div className="space-y-6">
               <RiskGauge value={riskScore} label={riskLabel} />
-              <RiskFactors items={[...riskFactors]} />
+              <RiskFactors items={activeRiskFactors} />
             </div>
 
             <div className="space-y-6">
-              <Recommendations items={[...recommendations]} />
+              <Recommendations items={recs} />
             </div>
           </div>
 
