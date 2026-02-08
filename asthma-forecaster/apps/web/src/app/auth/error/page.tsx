@@ -1,19 +1,19 @@
 "use client"
 
+import { Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 
-export default function AuthError() {
+const errorMessages: Record<string, string> = {
+  Configuration: "There is a problem with the server configuration.",
+  AccessDenied: "You do not have permission to sign in.",
+  Verification: "The verification token has expired or has already been used.",
+  Default: "An error occurred during authentication.",
+}
+
+function AuthErrorContent() {
   const searchParams = useSearchParams()
   const error = searchParams.get("error")
-
-  const errorMessages: Record<string, string> = {
-    Configuration: "There is a problem with the server configuration.",
-    AccessDenied: "You do not have permission to sign in.",
-    Verification: "The verification token has expired or has already been used.",
-    Default: "An error occurred during authentication.",
-  }
-
   const errorMessage = error ? errorMessages[error] || errorMessages.Default : errorMessages.Default
 
   return (
@@ -51,5 +51,13 @@ export default function AuthError() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AuthError() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Loading...</div>}>
+      <AuthErrorContent />
+    </Suspense>
   )
 }

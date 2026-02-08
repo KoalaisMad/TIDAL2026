@@ -5,18 +5,23 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import type { DayItem } from "./mockData"
 
+export type DayRiskInfo = { level: string; label: string }
+
 type DateStripProps = {
   days: DayItem[]
   selectedId: string
   onSelect: (id: string) => void
+  /** Optional: risk for each day (key = date id) to show on the strip */
+  dayRiskMap?: Record<string, DayRiskInfo>
 }
 
-export function DateStrip({ days, selectedId, onSelect }: DateStripProps) {
+export function DateStrip({ days, selectedId, onSelect, dayRiskMap }: DateStripProps) {
   return (
     <div className="rounded-3xl bg-card shadow-md">
       <div className="scrollbar-none flex snap-x snap-proximity gap-3 overflow-x-auto p-4 [scrollbar-gutter:stable] md:justify-between md:overflow-visible md:p-5">
         {days.map((d) => {
           const selected = d.id === selectedId
+          const risk = dayRiskMap?.[d.id]
           return (
             <button
               key={d.id}
@@ -37,6 +42,18 @@ export function DateStrip({ days, selectedId, onSelect }: DateStripProps) {
               <div className="text-sm font-bold leading-6 sm:text-base">
                 {d.dayOfMonth}
               </div>
+              {risk && (
+                <div
+                  className={cn(
+                    "mt-1 text-[10px] font-medium uppercase tracking-wide",
+                    risk.level === "high" && "text-destructive",
+                    risk.level === "moderate" && "text-amber-600 dark:text-amber-400",
+                    risk.level === "low" && "text-emerald-600 dark:text-emerald-400"
+                  )}
+                >
+                  {risk.label}
+                </div>
+              )}
             </button>
           )
         })}

@@ -1,9 +1,10 @@
 "use client"
 
+import { Suspense } from "react"
 import { signIn } from "next-auth/react"
 import { useSearchParams } from "next/navigation"
 
-export default function SignIn() {
+function SignInContent() {
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get("callbackUrl") || "/breathe-well"
 
@@ -51,5 +52,13 @@ export default function SignIn() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function SignIn() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Loading...</div>}>
+      <SignInContent />
+    </Suspense>
   )
 }

@@ -5,6 +5,34 @@ export type DayItem = {
   id: string
   dow: string
   dayOfMonth: number
+  /** ISO date YYYY-MM-DD for API calls */
+  date?: string
+}
+
+/** Format date as YYYY-MM-DD in local time (so strip and API keys match). */
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+/** Build the next 7 days from today for dynamic calendar strip. id = local YYYY-MM-DD. */
+export function getWeekDaysFromToday(): DayItem[] {
+  const days: DayItem[] = []
+  const dowShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  for (let i = 0; i < 7; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() + i)
+    const dateStr = toLocalDateStr(d)
+    days.push({
+      id: dateStr,
+      dow: dowShort[d.getDay()],
+      dayOfMonth: d.getDate(),
+      date: dateStr,
+    })
+  }
+  return days
 }
 
 export type RiskFactor = {
@@ -19,7 +47,7 @@ export type Recommendation = {
   description: string
 }
 
-// TODO(api): Replace with backend-provided forecast window & selected date.
+/** Static fallback when dynamic week not used. */
 export const weekDays: DayItem[] = [
   { id: "sun", dow: "Sun", dayOfMonth: 1 },
   { id: "mon", dow: "Mon", dayOfMonth: 2 },

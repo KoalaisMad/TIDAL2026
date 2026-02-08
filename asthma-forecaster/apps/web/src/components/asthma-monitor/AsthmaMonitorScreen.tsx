@@ -15,7 +15,8 @@ import { Recommendations } from "./Recommendations"
 import { RiskFactors } from "./RiskFactors"
 import { RiskGauge } from "./RiskGauge"
 import { RiskTabs } from "./RiskTabs"
-import { weekDays, type Recommendation, type RiskFactor } from "./mockData"
+import { useGeolocation } from "./useGeolocation"
+import { getWeekDaysFromToday, type DayItem, type Recommendation, type RiskFactor } from "./mockData"
 
 type ApiRiskLevel = "low" | "moderate" | "high"
 type ApiRiskFactor = {
@@ -23,9 +24,9 @@ type ApiRiskFactor = {
   label: string
   iconKey: "sprout" | "wind" | "thermometer" | "droplets"
 }
-type ApiRiskResponse = {
+type WeekDayData = {
   date: string
-  risk: { score: number; level: ApiRiskLevel; label: string }
+  risk: { score: number; level: string; label: string }
   activeRiskFactors: ApiRiskFactor[]
 }
 type ApiRecommendationsResponse = {
@@ -41,83 +42,121 @@ const ICONS: Record<ApiRiskFactor["iconKey"], RiskFactor["icon"]> = {
   droplets: Droplets,
 }
 
-function toIsoDateForSelectedDay(selectedDayId: string) {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = today.getMonth()
-  const dayOfMonth =
-    weekDays.find((d) => d.id === selectedDayId)?.dayOfMonth ?? today.getDate()
-  const d = new Date(year, month, dayOfMonth)
-  return d.toISOString().slice(0, 10)
+function dateForSelectedDay(selectedDayId: string, weekDays: DayItem[]): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(selectedDayId)) return selectedDayId
+  const day = weekDays.find((d) => d.id === selectedDayId)
+  if (day?.date) return day.date
+  if (day?.dayOfMonth != null) {
+    const today = new Date()
+    const d = new Date(today.getFullYear(), today.getMonth(), day.dayOfMonth)
+    return d.toISOString().slice(0, 10)
+  }
+  return new Date().toISOString().slice(0, 10)
 }
 
 export function AsthmaMonitorScreen() {
   const router = useRouter()
   const { data: session, status } = useSession()
+  const { location, status: locationStatus, requestLocation } = useGeolocation()
   const [tab, setTab] = React.useState<"environmental" | "personalized">(
     "environmental"
   )
-  const [selectedDayId, setSelectedDayId] = React.useState<string>("sat")
-
-  const [riskScore, setRiskScore] = React.useState<number>(3)
-  const [riskLabel, setRiskLabel] = React.useState<string>("Moderate")
-  const [activeRiskFactors, setActiveRiskFactors] = React.useState<RiskFactor[]>(
-    []
-  )
+  const weekDays = React.useMemo(() => getWeekDaysFromToday(), [])
+  const todayIso = weekDays[0]?.id ?? new Date().toISOString().slice(0, 10)
+  const [selectedDayId, setSelectedDayId] = React.useState<string>(todayIso)
+  const [weekData, setWeekData] = React.useState<Map<string, WeekDayData>>(new Map())
   const [recs, setRecs] = React.useState<Recommendation[]>([])
+
+  const selectedDate = dateForSelectedDay(selectedDayId, weekDays)
+  const selectedDayData = weekData.get(selectedDate)
+  const riskScore = selectedDayData?.risk?.score ?? null
+  const riskLabel = selectedDayData?.risk?.label ?? "No prediction"
+  const activeRiskFactors = React.useMemo(
+    () =>
+      (selectedDayData?.activeRiskFactors ?? []).map((f) => ({
+        id: f.id,
+        label: f.label,
+        icon: ICONS[f.iconKey] ?? Wind,
+      })),
+    [selectedDayData?.activeRiskFactors]
+  )
+  const dayRiskMap = React.useMemo(() => {
+    const m: Record<string, { level: string; label: string }> = {}
+    weekData.forEach((data, date) => {
+      m[date] = { level: data.risk.level, label: data.risk.label }
+    })
+    return m
+  }, [weekData])
+
+  React.useEffect(() => {
+    setSelectedDayId((prev) => (weekDays.some((d) => d.id === prev) ? prev : weekDays[0]?.id ?? prev))
+  }, [weekDays])
 
   React.useEffect(() => {
     const controller = new AbortController()
-    const date = toIsoDateForSelectedDay(selectedDayId)
-
-    async function load() {
-      try {
-        const riskRes = await fetch(`/api/risk?date=${encodeURIComponent(date)}`, {
-          signal: controller.signal,
+    const start = weekDays[0]?.id
+    if (!start) return
+    const locationParam = location ? `&location=${encodeURIComponent(location)}` : ""
+    fetch(`/api/week?start=${encodeURIComponent(start)}&days=7${locationParam}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: { days?: WeekDayData[] } | null) => {
+        const days = json?.days ?? []
+        const map = new Map<string, WeekDayData>()
+        days.forEach((d) => {
+          if (d?.date) map.set(d.date, d)
         })
-        if (!riskRes.ok) return
-        const riskData = (await riskRes.json()) as ApiRiskResponse
-
-        setRiskScore(riskData.risk.score)
-        setRiskLabel(riskData.risk.label)
-        setActiveRiskFactors(
-          riskData.activeRiskFactors.map((f) => ({
-            id: f.id,
-            label: f.label,
-            icon: ICONS[f.iconKey],
-          }))
-        )
-
-        const recsRes = await fetch(
-          `/api/recommendations?date=${encodeURIComponent(date)}&riskLevel=${encodeURIComponent(
-            riskData.risk.level
-          )}`,
-          { signal: controller.signal }
-        )
-        if (!recsRes.ok) return
-        const recsData = (await recsRes.json()) as ApiRecommendationsResponse
-        setRecs(recsData.recommendations)
-      } catch {
-        // keep existing UI defaults if the stub fetch fails
-      }
-    }
-
-    void load()
+        setWeekData(map)
+      })
+      .catch(() => setWeekData(new Map()))
     return () => controller.abort()
-  }, [selectedDayId])
+  }, [weekDays, location])
+
+  React.useEffect(() => {
+    if (!selectedDayData?.risk?.level) return
+    const controller = new AbortController()
+    fetch(
+      `/api/recommendations?date=${encodeURIComponent(selectedDate)}&riskLevel=${encodeURIComponent(
+        selectedDayData.risk.level
+      )}`,
+      { signal: controller.signal }
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: ApiRecommendationsResponse | null) => {
+        if (data?.recommendations) setRecs(data.recommendations)
+      })
+      .catch(() => {})
+    return () => controller.abort()
+  }, [selectedDate, selectedDayData?.risk?.level])
 
   return (
     <div className={layout.pageBg}>
       <main className={layout.container}>
         <div className={cn("flex flex-col", spacing.sectionGap)}>
-          <Header title="Breathe Well" />
+          <Header title="Asthma Monitor" />
 
           <RiskTabs value={tab} onValueChange={setTab} />
 
+          {locationStatus === "loading" && (
+            <p className="text-muted-foreground text-sm">Getting your location…</p>
+          )}
+          {(locationStatus === "denied" || locationStatus === "error" || locationStatus === "unavailable") && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted-foreground">
+                {locationStatus === "denied"
+                  ? "Location access was denied. Allow location to see risk for your area."
+                  : "Location unavailable."}
+              </span>
+              <Button type="button" variant="outline" size="sm" onClick={requestLocation}>
+                Try again
+              </Button>
+            </div>
+          )}
+
           <DateStrip
-            days={[...weekDays]}
+            days={weekDays}
             selectedId={selectedDayId}
             onSelect={(id) => setSelectedDayId(id)}
+            dayRiskMap={dayRiskMap}
           />
 
           {/* Mobile-first: single column; Desktop: use space with a 2-col grid */}

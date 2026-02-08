@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 import { DUMMY_RECOMMENDATIONS, isIsoDate, isRiskLevel } from "../_mock"
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   const url = new URL(request.url)
   const date = url.searchParams.get("date")
   const riskLevel = url.searchParams.get("riskLevel")
@@ -24,8 +24,7 @@ export function GET(request: Request) {
     )
   }
 
-  // Stub: for now, return the same dummy set regardless of date/level.
-  // (Keeping the signature in place so you can swap in real logic later.)
+  // Return static recommendations
   return NextResponse.json({
     date,
     riskLevel,

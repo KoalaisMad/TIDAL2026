@@ -6,11 +6,16 @@ Columns (raw):
   temp_min, temp_max, humidity, wind, pressure, rain
   pollen_tree, pollen_grass, pollen_weed
   day_of_week, month, season, holiday_flag
+
+Time-series: The "date" field is stored as BSON Date (datetime UTC) so it can
+serve as timeField for a MongoDB time-series collection. Use
+create_timeseries_collection() once to create a new collection with
+timeseries={ "timeField": "date" }; existing collections cannot be converted.
 """
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,15 +53,46 @@ def _uri_encode_password(uri: str) -> str:
         return uri
 
 
-def get_collection() -> Collection:
-    """Return the daily dataset collection (creates DB/client from env)."""
+def get_collection(collection_name: str | None = None) -> Collection:
+    """Return the daily dataset collection. If collection_name is set, use that instead of MONGODB_COLLECTION."""
     _load_env()
     uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
     uri = _uri_encode_password(uri)
     db_name = os.environ.get("MONGODB_DB", "tidal")
-    coll_name = os.environ.get("MONGODB_COLLECTION", "daily")
+    coll_name = collection_name or os.environ.get("MONGODB_COLLECTION", "daily")
     client = MongoClient(uri, serverSelectionTimeoutMS=10000)
     db: Database = client[db_name]
+    coll = db[coll_name]
+    _ensure_indexes(coll)
+    return coll
+
+
+def create_timeseries_collection(
+    collection_name: str | None = None,
+    *,
+    time_field: str = "date",
+    client: MongoClient | None = None,
+) -> Collection:
+    """
+    Create a time-series collection for the daily dataset (if it does not exist).
+    The timeField must be a BSON date; we store "date" as datetime in pull_result_to_daily_row.
+
+    Use this once before writing to a new collection you want as time-series.
+    Existing collections cannot be converted to time-series.
+    """
+    _load_env()
+    if client is None:
+        uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
+        uri = _uri_encode_password(uri)
+        client = MongoClient(uri, serverSelectionTimeoutMS=10000)
+    db_name = os.environ.get("MONGODB_DB", "tidal")
+    coll_name = collection_name or os.environ.get("MONGODB_COLLECTION", "daily")
+    db: Database = client[db_name]
+    if coll_name not in db.list_collection_names():
+        db.create_collection(
+            coll_name,
+            timeseries={"timeField": time_field},
+        )
     coll = db[coll_name]
     _ensure_indexes(coll)
     return coll
@@ -78,10 +114,62 @@ def location_id(latitude: float | None, longitude: float | None, zip_code: str |
     return "unknown"
 
 
+# Defaults for missing values so stored rows have minimal nulls
+_DAILY_DEFAULTS: dict[str, Any] = {
+    "PM2_5_mean": 0.0,
+    "PM2_5_max": 0.0,
+    "AQI": 50,
+    "temp_min": 15.0,
+    "temp_max": 20.0,
+    "humidity": 50.0,
+    "wind": 0.0,
+    "pressure": 101325.0,
+    "rain": 0.0,
+    "pollen_tree": 0.0,
+    "pollen_grass": 0.0,
+    "pollen_weed": 0.0,
+    "holiday_flag": False,
+}
+
+
+def _season_from_month(m: int) -> int:
+    """1=winter, 2=spring, 3=summer, 4=fall."""
+    if m in (12, 1, 2):
+        return 1
+    if m in (3, 4, 5):
+        return 2
+    if m in (6, 7, 8):
+        return 3
+    return 4
+
+
+def _fill_daily_row_nulls(doc: dict[str, Any]) -> dict[str, Any]:
+    """Replace None with sensible defaults so most fields are non-null."""
+    out = dict(doc)
+    dt = out.get("date")
+    for key, default in _DAILY_DEFAULTS.items():
+        if key in out and out[key] is None:
+            out[key] = default
+    if out.get("day_of_week") is None and dt is not None:
+        d = dt.date() if hasattr(dt, "date") else (date.fromisoformat(str(dt)[:10]) if isinstance(dt, str) else None)
+        if d is not None:
+            out["day_of_week"] = d.weekday()  # 0=Monday
+    if out.get("month") is None and dt is not None:
+        d = dt.date() if hasattr(dt, "date") else (date.fromisoformat(str(dt)[:10]) if isinstance(dt, str) else None)
+        if d is not None:
+            out["month"] = d.month
+    if out.get("season") is None and out.get("month") is not None:
+        out["season"] = _season_from_month(int(out["month"]))
+    for key in ("day_of_week", "month", "season"):
+        if key in out and out[key] is None:
+            out[key] = 0
+    return out
+
+
 def pull_result_to_daily_row(pull_result: dict[str, Any]) -> dict[str, Any]:
     """
     Convert output of pull_by_location_date.pull_all() into one daily row document
-    with the requested raw columns.
+    with the requested raw columns. Fills nulls with sensible defaults.
     """
     loc = pull_result.get("location") or {}
     lat = loc.get("latitude")
@@ -91,8 +179,11 @@ def pull_result_to_daily_row(pull_result: dict[str, Any]) -> dict[str, Any]:
     try:
         d = date.fromisoformat(target_date_str)
         month = d.month
+        # BSON Date for time-series timeField (required for MongoDB time-series collections)
+        date_bson = datetime.combine(d, time.min, tzinfo=timezone.utc)
     except (TypeError, ValueError):
         month = None
+        date_bson = None
 
     aq = pull_result.get("air_quality") or {}
     weather = pull_result.get("weather") or {}
@@ -104,7 +195,7 @@ def pull_result_to_daily_row(pull_result: dict[str, Any]) -> dict[str, Any]:
         "latitude": lat,
         "longitude": lon,
         "zip_code": zip_code,
-        "date": target_date_str,
+        "date": date_bson if date_bson is not None else target_date_str,
         # Air quality (no dots in keys - MongoDB treats dot as path)
         "PM2_5_mean": aq.get("pm25_mean"),
         "PM2_5_max": aq.get("pm25_max"),
@@ -126,7 +217,7 @@ def pull_result_to_daily_row(pull_result: dict[str, Any]) -> dict[str, Any]:
         "season": tc.get("season"),
         "holiday_flag": tc.get("is_holiday", False),
     }
-    return doc
+    return _fill_daily_row_nulls(doc)
 
 
 def upsert_daily_row(pull_result: dict[str, Any], *, coll: Collection | None = None) -> Any:
