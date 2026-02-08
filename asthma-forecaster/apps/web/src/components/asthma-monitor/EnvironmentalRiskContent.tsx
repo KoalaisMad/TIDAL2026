@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { useSession, signIn } from "next-auth/react"
 
+import { AllergyChatbot } from "./AllergyChatbot"
 import { DateStrip } from "./DateStrip"
 import { useGeolocation } from "./useGeolocation"
 import { Recommendations } from "./Recommendations"
@@ -249,6 +250,7 @@ export function EnvironmentalRiskContent() {
 
         <div className="space-y-8">
           <Recommendations items={recs} />
+          <AllergyChatbot weekData={weekData} weekStart={weekDays[0]?.id} />
         </div>
       </div>
 

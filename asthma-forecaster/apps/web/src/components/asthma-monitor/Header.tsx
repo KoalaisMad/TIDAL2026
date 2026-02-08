@@ -44,7 +44,9 @@ export function Header({ title }: { title: string }) {
     <header className="flex items-center justify-between py-2">
       <div>
         <p className="text-sm font-light text-muted-foreground">Good morning,</p>
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {status === "authenticated" && displayName ? displayName : title}
+        </h1>
       </div>
       {status === "authenticated" && session?.user && (
         <div className="flex items-center gap-2 sm:gap-3">

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ArrowRight } from "lucide-react"
+import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useSession, signIn } from "next-auth/react"
 
@@ -62,7 +62,12 @@ export function RiskTabs({ value, onValueChange, className }: RiskTabsProps) {
           value="environmental"
           className="rounded-none bg-transparent px-0 text-base font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:font-bold cursor-pointer"
         >
-          Environmental Risk
+          <span className="inline-flex items-center gap-2">
+            {value === "personalized" && (
+              <ArrowLeft className="h-5 w-5 shrink-0" aria-hidden="true" />
+            )}
+            Environmental Risk
+          </span>
         </TabsTrigger>
 
         <TabsTrigger
