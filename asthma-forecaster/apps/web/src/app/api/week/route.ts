@@ -5,6 +5,10 @@ import { spawnSync } from "child_process"
 
 import { isIsoDate } from "../_mock"
 
+function toFloatScore(n: number): number {
+  return Math.round(Number(n) * 10) / 10
+}
+
 function getTidalRoot(): string {
   const env = process.env.TIDAL_ROOT
   if (env) return path.resolve(env)
@@ -26,11 +30,6 @@ function getTidalRoot(): string {
     }
   }
   return path.resolve(cwd, "..", "..", "..")
-}
-
-function getFlareModelPath(tidalRoot: string): string | null {
-  const p = path.join(tidalRoot, "asthma-forecaster", "apps", "D A T A", "flare_model.joblib")
-  return fs.existsSync(p) ? p : null
 }
 
 function loadTidalEnv(tidalRoot: string): void {
@@ -73,18 +72,7 @@ function toLocationId(location: string | null): string | null {
   return s
 }
 
-/** Parse "lat,lon" into [lat, lon] for --lat/--lon (API week fetch). */
-function parseLatLon(location: string | null): { lat: number; lon: number } | null {
-  if (!location?.trim()) return null
-  const latLon = /^(-?\d+\.?\d*),(-?\d+\.?\d*)$/.exec(location.trim())
-  if (!latLon) return null
-  const lat = parseFloat(latLon[1])
-  const lon = parseFloat(latLon[2])
-  if (Number.isNaN(lat) || Number.isNaN(lon)) return null
-  return { lat, lon }
-}
-
-/** GET /api/week?start=YYYY-MM-DD&days=7&location=... — next N days using risk/flare model when available. */
+/** GET /api/week?start=YYYY-MM-DD&days=7&location=... — next N days using environment risk model (trainingModel / predict_risk). */
 export async function GET(request: Request) {
   const url = new URL(request.url)
   let start = url.searchParams.get("start")
@@ -98,15 +86,10 @@ export async function GET(request: Request) {
   const tidalRoot = getTidalRoot()
   loadTidalEnv(tidalRoot)
 
-  const useFlare = getFlareModelPath(tidalRoot) !== null
+  // Environment risk uses trainingModel pipeline (predict_risk loads risk_model_general.joblib)
   const py = process.platform === "win32" ? "python" : "python3"
-  const module = useFlare ? "apps.ml.predict_flare" : "apps.ml.predict_risk"
-  const args = ["-m", module, "--week", "--start", start, "--days", String(days)]
+  const args = ["-m", "apps.ml.predict_risk", "--week", "--start", start, "--days", String(days)]
   if (locationId) args.push("--location-id", locationId)
-  const latLon = parseLatLon(url.searchParams.get("location") ?? url.searchParams.get("location_id"))
-  if (latLon && useFlare) {
-    args.push("--lat", String(latLon.lat), "--lon", String(latLon.lon))
-  }
 
   let result = spawnSync(py, args, {
     cwd: tidalRoot,
@@ -117,16 +100,6 @@ export async function GET(request: Request) {
   const errCode = (result.error as NodeJS.ErrnoException)?.code
   if (result.status !== 0 && errCode === "ENOENT" && process.platform !== "win32") {
     result = spawnSync("python", args, {
-      cwd: tidalRoot,
-      encoding: "utf-8",
-      env: { ...process.env, PYTHONPATH: path.join(tidalRoot, "asthma-forecaster") },
-      timeout: 30000,
-    })
-  }
-  if (result.status !== 0 && useFlare) {
-    const fallbackArgs = ["-m", "apps.ml.predict_risk", "--week", "--start", start, "--days", String(days)]
-    if (locationId) fallbackArgs.push("--location-id", locationId)
-    result = spawnSync(py, fallbackArgs, {
       cwd: tidalRoot,
       encoding: "utf-8",
       env: { ...process.env, PYTHONPATH: path.join(tidalRoot, "asthma-forecaster") },
@@ -147,7 +120,14 @@ export async function GET(request: Request) {
         }>
       }
       if (Array.isArray(data.days)) {
-        return NextResponse.json({ start: data.start, days: data.days })
+        const days = data.days.map((d: { date: string; risk: { score: number; level: string; label: string }; activeRiskFactors?: unknown[]; daily?: unknown }) => ({
+          ...d,
+          risk: {
+            ...d.risk,
+            score: toFloatScore(d.risk.score),
+          },
+        }))
+        return NextResponse.json({ start: data.start, days: days })
       }
     } catch {
       // fall through
@@ -158,11 +138,11 @@ export async function GET(request: Request) {
   const fallbackDays = []
   const levels: Array<{ score: number; level: string; label: string }> = [
     { score: 1.5, level: "low", label: "Low" },
-    { score: 2, level: "low", label: "Low" },
+    { score: 2.0, level: "low", label: "Low" },
     { score: 2.5, level: "moderate", label: "Moderate" },
-    { score: 3, level: "moderate", label: "Moderate" },
+    { score: 3.0, level: "moderate", label: "Moderate" },
     { score: 3.5, level: "moderate", label: "Moderate" },
-    { score: 4, level: "high", label: "High" },
+    { score: 4.0, level: "high", label: "High" },
     { score: 4.5, level: "high", label: "High" },
   ]
   for (let i = 0; i < days; i++) {
@@ -171,7 +151,7 @@ export async function GET(request: Request) {
     const risk = levels[i % levels.length]
     fallbackDays.push({
       date: toLocalDateStr(d),
-      risk: { score: risk.score, level: risk.level, label: risk.label },
+      risk: { score: toFloatScore(risk.score), level: risk.level, label: risk.label },
       activeRiskFactors: [],
       daily: {},
     })

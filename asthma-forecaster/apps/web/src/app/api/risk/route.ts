@@ -5,6 +5,10 @@ import { spawnSync } from "child_process"
 
 import { DUMMY_ACTIVE_RISK_FACTORS, isIsoDate } from "../_mock"
 
+function toFloatScore(n: number): number {
+  return Math.round(Number(n) * 10) / 10
+}
+
 /** Root of TIDAL2026 (where risk_model_general.joblib and .env live). Set TIDAL_ROOT if needed. */
 function getTidalRoot(): string {
   const env = process.env.TIDAL_ROOT
@@ -48,29 +52,6 @@ function loadTidalEnv(tidalRoot: string): void {
   } catch {
     // ignore
   }
-}
-
-/** Path to D A T A/flare_model.joblib (flare data model) relative to TIDAL root. */
-function getFlareModelPath(tidalRoot: string): string | null {
-  const p = path.join(tidalRoot, "asthma-forecaster", "apps", "D A T A", "flare_model.joblib")
-  return fs.existsSync(p) ? p : null
-}
-
-function runFlarePython(
-  tidalRoot: string,
-  date: string,
-  pythonCmd?: string,
-  locationId?: string | null
-): ReturnType<typeof spawnSync> {
-  const py = pythonCmd ?? (process.platform === "win32" ? "python" : "python3")
-  const args = ["-m", "apps.ml.predict_flare", "--date", date]
-  if (locationId?.trim()) args.push("--location-id", locationId.trim())
-  return spawnSync(py, args, {
-    cwd: tidalRoot,
-    encoding: "utf-8",
-    env: { ...process.env, PYTHONPATH: path.join(tidalRoot, "asthma-forecaster") },
-    timeout: 15000,
-  })
 }
 
 function runPython(
@@ -119,23 +100,11 @@ export async function GET(request: Request) {
   const tidalRoot = getTidalRoot()
   loadTidalEnv(tidalRoot)
 
-  // Prefer flare data model (D A T A/flare_model.joblib) when present for frontend risk
-  const useFlare = getFlareModelPath(tidalRoot) !== null
-  let result = useFlare
-    ? runFlarePython(tidalRoot, date!, undefined, locationId)
-    : runPython(tidalRoot, date!, undefined, locationId)
+  // Environment risk uses trainingModel pipeline (predict_risk loads risk_model_general.joblib)
+  let result = runPython(tidalRoot, date!, undefined, locationId)
   const errCode = (result.error as NodeJS.ErrnoException)?.code
   if (result.status !== 0 && errCode === "ENOENT" && process.platform !== "win32") {
-    result = useFlare
-      ? runFlarePython(tidalRoot, date!, "python", locationId)
-      : runPython(tidalRoot, date!, "python", locationId)
-  }
-  if (result.status !== 0 && useFlare) {
-    result = runPython(tidalRoot, date!, undefined, locationId)
-    const errCode2 = (result.error as NodeJS.ErrnoException)?.code
-    if (result.status !== 0 && errCode2 === "ENOENT" && process.platform !== "win32") {
-      result = runPython(tidalRoot, date!, "python", locationId)
-    }
+    result = runPython(tidalRoot, date!, "python", locationId)
   }
   const stdout = typeof result.stdout === "string" ? result.stdout.trim() : ""
   if (stdout) {
@@ -150,7 +119,10 @@ export async function GET(request: Request) {
       if (data.risk) {
         const body: Record<string, unknown> = {
           date: data.date,
-          risk: data.risk,
+          risk: {
+            ...data.risk,
+            score: toFloatScore(data.risk.score),
+          },
           activeRiskFactors:
             (data.activeRiskFactors?.length ?? 0) > 0
               ? data.activeRiskFactors!
@@ -174,7 +146,7 @@ export async function GET(request: Request) {
   const risk = fallbackByDate(date!)
   return NextResponse.json({
     date,
-    risk: { score: risk.score, level: risk.level, label: risk.label },
+    risk: { score: toFloatScore(risk.score), level: risk.level, label: risk.label },
     activeRiskFactors: DUMMY_ACTIVE_RISK_FACTORS,
   })
 }
