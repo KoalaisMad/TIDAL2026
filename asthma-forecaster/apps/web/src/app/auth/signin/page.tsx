@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 
 export default function SignIn() {
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get("callbackUrl") || "/asthma-monitor"
+  const callbackUrl = searchParams.get("callbackUrl") || "/breathe-well"
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
