@@ -183,12 +183,18 @@ export function EnvironmentalRiskContent() {
     if (!selectedDayData?.risk?.level) return
     const controller = new AbortController()
     setRecsLoading(true)
-    fetch(
-      `/api/recommendations?date=${encodeURIComponent(selectedDate)}&riskLevel=${encodeURIComponent(
-        selectedDayData.risk.level
-      )}`,
-      { signal: controller.signal }
-    )
+    const body = {
+      date: selectedDate,
+      riskLevel: selectedDayData.risk.level,
+      daily: selectedDayData.daily ?? undefined,
+      activeRiskFactors: selectedDayData.activeRiskFactors?.map(({ id, label }) => ({ id, label })),
+    }
+    fetch("/api/recommendations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: ApiRecommendationsResponse | null) => {
         if (data?.recommendations) setRecs(data.recommendations)
@@ -196,7 +202,7 @@ export function EnvironmentalRiskContent() {
       .catch(() => {})
       .finally(() => setRecsLoading(false))
     return () => controller.abort()
-  }, [selectedDate, selectedDayData?.risk?.level])
+  }, [selectedDate, selectedDayData?.risk?.level, selectedDayData?.daily, selectedDayData?.activeRiskFactors])
 
   return (
     <>

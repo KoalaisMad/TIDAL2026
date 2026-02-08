@@ -3,6 +3,7 @@ import GoogleProvider from "next-auth/providers/google"
 import { userExistsByEmail } from "@/lib/users"
 
 export const authOptions: NextAuthOptions = {
+  trustHost: true,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
