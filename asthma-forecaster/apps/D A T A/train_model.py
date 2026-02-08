@@ -33,19 +33,16 @@ from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 
-def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], object, object]:
     """
     Build numeric feature matrix from the dataset CSV.
     Drops identifiers and target; encodes day_of_week and season; fills missing.
+    Returns (X, feature_cols, le_dow, le_season) so encoders can be saved for prediction.
     """
     # Exclude target and non-features
     exclude = {"date", "locationid", "zip_code", "flare_day", "risk"}
-    # Optional: drop lat/lon to keep model location-agnostic; include them if you want location-aware
-    # exclude |= {"latitude", "longitude"}
-
     df = df.copy()
 
-    # Fill missing numeric (AQI, pollen often empty in dataset.py output)
     numeric_fill = df.select_dtypes(include=[np.number]).columns
     for col in numeric_fill:
         if col in exclude or col in ("flare_day", "risk"):
@@ -54,7 +51,7 @@ def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
             med = df[col].median()
             df[col] = df[col].fillna(med if np.isfinite(med) else 0)
 
-    # Encode categoricals
+    le_dow = le_season = None
     if "day_of_week" in df.columns:
         le_dow = LabelEncoder()
         df["day_of_week"] = df["day_of_week"].astype(str)
@@ -69,7 +66,7 @@ def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     feature_cols = [c for c in df.columns if c not in exclude]
     X = df[feature_cols].copy()
     X = X.fillna(0).astype(float)
-    return X, feature_cols
+    return X, feature_cols, le_dow, le_season
 
 
 def main():
@@ -105,7 +102,7 @@ def main():
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").reset_index(drop=True)
 
-    X, feature_cols = prepare_features(df)
+    X, feature_cols, le_dow, le_season = prepare_features(df)
     y = df[target_col].astype(int).values
 
     n = len(y)
@@ -189,6 +186,8 @@ def main():
             "feature_order": feature_cols,
             "target_type": "risk_1_5" if target_col == "risk" else "flare_binary",
             "target_names": target_names,
+            "le_dow": le_dow,
+            "le_season": le_season,
         },
         out_path,
     )
