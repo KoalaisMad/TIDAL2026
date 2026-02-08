@@ -18,7 +18,8 @@ export async function GET() {
       registered: true,
       email: user.email,
       name: user.name,
-      profile: user.profile,
+      profile: user.profile, // height, weight, gender, smokerStatus, petExposure, bmi
+      checkIns: user.checkIns ?? [], // daily check-ins: wheeze, cough, chestTightness, exerciseMinutes
     })
   } catch (err) {
     console.error("GET /api/users/me DB error:", err)

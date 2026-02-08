@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { layout } from "@/theme"
-import { cn } from "@/lib/utils"
+import { parseHeightToMeters, parseWeightToKg, computeBmi, bmiCategory } from "@/lib/bmi"
 
 export default function RegistrationPage() {
   const router = useRouter()
@@ -25,9 +25,17 @@ export default function RegistrationPage() {
     height: "",
     weight: "",
     gender: "",
+    smokerStatus: "",
+    petExposure: "",
   })
   const [submitting, setSubmitting] = React.useState(false)
+  const [saved, setSaved] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+
+  const bmi = React.useMemo(
+    () => computeBmi(parseHeightToMeters(formData.height), parseWeightToKg(formData.weight)),
+    [formData.height, formData.weight]
+  )
 
   // Require auth; prefill name from session
   React.useEffect(() => {
@@ -57,13 +65,17 @@ export default function RegistrationPage() {
           height: formData.height.trim() || undefined,
           weight: formData.weight.trim() || undefined,
           gender: formData.gender || undefined,
+          smokerStatus: formData.smokerStatus || undefined,
+          petExposure: formData.petExposure || undefined,
+          ...(bmi != null && { bmi }),
         }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error ?? "Registration failed")
       }
-      router.push("/breathe-well/environmental")
+      setSaved(true)
+      setTimeout(() => router.push("/breathe-well/environmental"), 800)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed")
       setSubmitting(false)
@@ -79,6 +91,11 @@ export default function RegistrationPage() {
               {error && (
                 <p className="text-sm text-destructive" role="alert">
                   {error}
+                </p>
+              )}
+              {saved && (
+                <p className="text-sm text-emerald-600 dark:text-emerald-400" role="status">
+                  Account created! Redirecting…
                 </p>
               )}
               {/* Header Section */}
@@ -118,7 +135,7 @@ export default function RegistrationPage() {
                   />
                 </div>
 
-                {/* Height Field */}
+                {/* Height Field — used for BMI */}
                 <div className="space-y-2">
                   <label
                     htmlFor="height"
@@ -126,7 +143,7 @@ export default function RegistrationPage() {
                   >
                     Height{" "}
                     <span className="font-normal text-muted-foreground">
-                      (Optional)
+                      (Optional, for BMI)
                     </span>
                   </label>
                   <Input
@@ -140,7 +157,7 @@ export default function RegistrationPage() {
                   />
                 </div>
 
-                {/* Weight Field */}
+                {/* Weight Field — used for BMI */}
                 <div className="space-y-2">
                   <label
                     htmlFor="weight"
@@ -148,7 +165,7 @@ export default function RegistrationPage() {
                   >
                     Weight{" "}
                     <span className="font-normal text-muted-foreground">
-                      (Optional)
+                      (Optional, for BMI)
                     </span>
                   </label>
                   <Input
@@ -160,6 +177,14 @@ export default function RegistrationPage() {
                       setFormData({ ...formData, weight: e.target.value })
                     }
                   />
+                  {bmi != null && (
+                    <p className="text-sm text-muted-foreground pt-1">
+                      BMI: <span className="font-semibold text-foreground">{bmi}</span>
+                      <span className="ml-1.5 text-muted-foreground">
+                        ({bmiCategory(bmi)})
+                      </span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Gender Field */}
@@ -192,6 +217,61 @@ export default function RegistrationPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Smoker status */}
+                <div className="space-y-2">
+                  <label
+                    htmlFor="smokerStatus"
+                    className="text-sm font-semibold text-foreground"
+                  >
+                    Smoker status{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (Optional)
+                    </span>
+                  </label>
+                  <Select
+                    value={formData.smokerStatus}
+                    onValueChange={(value: string) =>
+                      setFormData({ ...formData, smokerStatus: value })
+                    }
+                  >
+                    <SelectTrigger id="smokerStatus">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="smoker">I am a smoker</SelectItem>
+                      <SelectItem value="exposed">Often around smokers</SelectItem>
+                      <SelectItem value="none">No smoking exposure</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Pet exposure */}
+                <div className="space-y-2">
+                  <label
+                    htmlFor="petExposure"
+                    className="text-sm font-semibold text-foreground"
+                  >
+                    Pet exposure{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (Optional)
+                    </span>
+                  </label>
+                  <Select
+                    value={formData.petExposure}
+                    onValueChange={(value: string) =>
+                      setFormData({ ...formData, petExposure: value })
+                    }
+                  >
+                    <SelectTrigger id="petExposure">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">Yes, I have or am around pets</SelectItem>
+                      <SelectItem value="no">No pet exposure</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Submit Button */}
@@ -199,9 +279,9 @@ export default function RegistrationPage() {
                 type="submit"
                 size="pill"
                 className="w-full"
-                disabled={submitting}
+                disabled={submitting || saved}
               >
-                {submitting ? "Saving…" : "Create Account"}
+                {saved ? "Saved!" : submitting ? "Saving…" : "Create Account"}
               </Button>
             </form>
           </Card>

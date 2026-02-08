@@ -1,10 +1,23 @@
 import { getDb, USERS_COLLECTION } from "./db"
 
+/** Stored in user.checkIns[] in MongoDB. Short daily check-in (10–15 sec). */
+export interface DailyCheckInRecord {
+  date: string // ISO date YYYY-MM-DD
+  wheeze: number // ordinal 0–3
+  cough: number // ordinal 0–3
+  chestTightness: number // ordinal 0–3
+  exerciseMinutes: number // minutes
+}
+
+/** Stored in user.profile in MongoDB. Used for BMI (height, weight) and risk. */
 export interface UserProfile {
   name?: string
-  height?: string
-  weight?: string
+  height?: string // for BMI
+  weight?: string // for BMI
   gender?: string
+  smokerStatus?: string
+  petExposure?: string
+  bmi?: number // computed from height/weight
 }
 
 export interface StoredUser {
@@ -12,6 +25,7 @@ export interface StoredUser {
   email: string
   name?: string
   profile?: UserProfile
+  checkIns?: DailyCheckInRecord[]
   createdAt: Date
   updatedAt: Date
 }
@@ -58,7 +72,24 @@ export async function getUserByEmail(email: string): Promise<StoredUser | null> 
     email: doc.email,
     name: doc.name,
     profile: doc.profile,
+    checkIns: doc.checkIns,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   }
+}
+
+export async function addCheckIn(
+  email: string,
+  checkIn: DailyCheckInRecord
+): Promise<void> {
+  if (!email) return
+  const db = await getDb()
+  const now = new Date()
+  await db.collection(USERS_COLLECTION).updateOne(
+    { email },
+    {
+      $set: { updatedAt: now },
+      $push: { checkIns: checkIn },
+    }
+  )
 }

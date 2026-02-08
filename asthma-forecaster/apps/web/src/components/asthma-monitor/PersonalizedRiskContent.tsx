@@ -4,13 +4,34 @@ import * as React from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useRouter } from "next/navigation"
+import {
+  parseHeightToMeters,
+  parseWeightToKg,
+  computeBmi,
+} from "@/lib/bmi"
+
+/** Daily check-in: ordinal 0–3 and exercise minutes */
+export interface DailyCheckIn {
+  wheeze: number
+  cough: number
+  chestTightness: number
+  exerciseMinutes: number
+}
 
 interface PersonalizedData {
   name: string
   heightFeet: string
   heightInches: string
   weight: string
+  gender: string
   smokerExposure: "smoker" | "exposed" | "none" | ""
   petExposure: "yes" | "no" | ""
 }
@@ -19,22 +40,83 @@ interface FormErrors {
   name?: string
   height?: string
   weight?: string
+  gender?: string
   smokerExposure?: string
   petExposure?: string
 }
 
+const ORDINAL_OPTIONS = [0, 1, 2, 3] as const
+
 export function PersonalizedRiskContent() {
   const router = useRouter()
+  const [dailyCheckIn, setDailyCheckIn] = React.useState<DailyCheckIn>({
+    wheeze: 0,
+    cough: 0,
+    chestTightness: 0,
+    exerciseMinutes: 0,
+  })
   const [formData, setFormData] = React.useState<PersonalizedData>({
     name: "",
     heightFeet: "",
     heightInches: "",
     weight: "",
+    gender: "",
     smokerExposure: "",
     petExposure: "",
   })
   const [errors, setErrors] = React.useState<FormErrors>({})
   const [touched, setTouched] = React.useState<Record<string, boolean>>({})
+  const [checkInSaved, setCheckInSaved] = React.useState(false)
+  const [checkInSaving, setCheckInSaving] = React.useState(false)
+  const [riskSaved, setRiskSaved] = React.useState(false)
+  const [riskSaving, setRiskSaving] = React.useState(false)
+  const [riskError, setRiskError] = React.useState<string | null>(null)
+  const profileLoadedRef = React.useRef(false)
+
+  // Pre-populate form from user profile so height, weight, gender, petExposure get updated (not left null)
+  React.useEffect(() => {
+    const cancelled = { current: false }
+    async function loadProfile() {
+      try {
+        const res = await fetch("/api/users/me")
+        if (!res.ok || cancelled.current) return
+        const data = await res.json()
+        const profile = data?.profile ?? {}
+        const name = data?.name ?? profile?.name ?? ""
+        const height = profile?.height ?? ""
+        const weight = profile?.weight ?? ""
+        const gender = profile?.gender ?? ""
+        const smokerStatus = profile?.smokerStatus ?? ""
+        const petExposure = profile?.petExposure ?? ""
+        let heightFeet = ""
+        let heightInches = ""
+        if (height && typeof height === "string") {
+          const ftIn = height.match(/^(\d+)\s*'\s*(\d+)\s*"?\s*$/)
+          if (ftIn) {
+            heightFeet = ftIn[1]
+            heightInches = ftIn[2]
+          }
+        }
+        const weightNum = typeof weight === "string" ? weight.replace(/\s*lbs?\.?$/i, "").trim() : ""
+        if (!cancelled.current) {
+          setFormData((prev) => ({
+            ...prev,
+            name: name || prev.name,
+            heightFeet: heightFeet || prev.heightFeet,
+            heightInches: heightInches || prev.heightInches,
+            weight: weightNum || prev.weight,
+            gender: gender || prev.gender,
+            smokerExposure: smokerStatus || prev.smokerExposure,
+            petExposure: petExposure === "yes" || petExposure === "no" ? petExposure : prev.petExposure,
+          }))
+        }
+      } finally {
+        if (!cancelled.current) profileLoadedRef.current = true
+      }
+    }
+    loadProfile()
+    return () => { cancelled.current = true }
+  }, [])
 
   const validateHeight = (): string | undefined => {
     const feet = formData.heightFeet
@@ -196,6 +278,7 @@ export function PersonalizedRiskContent() {
       heightFeet: true,
       heightInches: true,
       weight: true,
+      gender: true,
       smokerExposure: true,
       petExposure: true,
     })
@@ -203,23 +286,177 @@ export function PersonalizedRiskContent() {
     return isValid
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (validateForm()) {
-      // TODO: Process form data and calculate personalized risk
-      const formattedHeight = `${formData.heightFeet}' ${formData.heightInches}"`
-      console.log("Form submitted:", {
-        ...formData,
-        formattedHeight,
+  const saveDailyCheckIn = async () => {
+    setCheckInSaving(true)
+    setCheckInSaved(false)
+    try {
+      const res = await fetch("/api/users/check-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wheeze: dailyCheckIn.wheeze,
+          cough: dailyCheckIn.cough,
+          chestTightness: dailyCheckIn.chestTightness,
+          exerciseMinutes: dailyCheckIn.exerciseMinutes,
+        }),
       })
-    } else {
-      console.log("Form has validation errors")
+      if (!res.ok) throw new Error("Failed to save check-in")
+      setCheckInSaved(true)
+      setTimeout(() => setCheckInSaved(false), 3000)
+    } catch {
+      // show error if needed
+    } finally {
+      setCheckInSaving(false)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRiskError(null)
+    if (!validateForm()) return
+    setRiskSaving(true)
+    try {
+      const heightStr =
+        formData.heightFeet && formData.heightInches
+          ? `${formData.heightFeet}'${formData.heightInches}"`
+          : ""
+      const weightStr = formData.weight ? `${formData.weight} lbs` : ""
+      const heightM = parseHeightToMeters(heightStr)
+      const weightKg = parseWeightToKg(weightStr)
+      const bmi = computeBmi(heightM, weightKg)
+      const res = await fetch("/api/users/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name.trim() || undefined,
+          height: heightStr || undefined,
+          weight: weightStr || undefined,
+          gender: formData.gender.trim() || undefined,
+          smokerStatus: formData.smokerExposure || undefined,
+          petExposure: formData.petExposure || undefined,
+          ...(bmi != null && { bmi }),
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? "Failed to save")
+      }
+      setRiskSaved(true)
+      setTimeout(() => setRiskSaved(false), 3000)
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("profile-updated"))
+      }
+    } catch (err) {
+      setRiskError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setRiskSaving(false)
     }
   }
 
   return (
     <>
+      {/* Short daily check-in (10–15 seconds) */}
+      <Card className="p-6">
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold">Daily check-in</h2>
+          <p className="text-sm text-muted-foreground">
+            Quick symptom and activity log (0 = none, 3 = severe).
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Wheeze (0–3)</label>
+              <Select
+                value={String(dailyCheckIn.wheeze)}
+                onValueChange={(v) =>
+                  setDailyCheckIn((prev) => ({ ...prev, wheeze: Number(v) }))
+                }
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ORDINAL_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Cough (0–3)</label>
+              <Select
+                value={String(dailyCheckIn.cough)}
+                onValueChange={(v) =>
+                  setDailyCheckIn((prev) => ({ ...prev, cough: Number(v) }))
+                }
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ORDINAL_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Chest tightness (0–3)</label>
+              <Select
+                value={String(dailyCheckIn.chestTightness)}
+                onValueChange={(v) =>
+                  setDailyCheckIn((prev) => ({ ...prev, chestTightness: Number(v) }))
+                }
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ORDINAL_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Exercise / outdoor time (min)</label>
+              <Input
+                type="number"
+                min={0}
+                max={1440}
+                placeholder="e.g. 45"
+                value={dailyCheckIn.exerciseMinutes || ""}
+                onChange={(e) => {
+                  const v = e.target.value === "" ? 0 : parseInt(e.target.value, 10)
+                  setDailyCheckIn((prev) => ({ ...prev, exerciseMinutes: isNaN(v) ? 0 : Math.max(0, v) }))
+                }}
+                className="bg-white"
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <Button
+              type="button"
+              size="pill"
+              onClick={saveDailyCheckIn}
+              disabled={checkInSaving}
+            >
+              {checkInSaved ? "Saved!" : checkInSaving ? "Saving…" : "Save check-in"}
+            </Button>
+            {checkInSaved && (
+              <span className="text-sm text-emerald-600 dark:text-emerald-400">
+                Check-in saved.
+              </span>
+            )}
+          </div>
+        </div>
+      </Card>
+
       <Card className="p-8">
         <div className="space-y-6">
           <h2 className="text-2xl font-bold">Personalized Risk Assessment</h2>
@@ -228,6 +465,16 @@ export function PersonalizedRiskContent() {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {riskError && (
+              <p className="text-sm text-destructive" role="alert">
+                {riskError}
+              </p>
+            )}
+            {riskSaved && (
+              <p className="text-sm text-emerald-600 dark:text-emerald-400" role="status">
+                Profile saved.
+              </p>
+            )}
             {/* Name Field */}
             <div className="space-y-2">
               <label htmlFor="name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -317,6 +564,27 @@ export function PersonalizedRiskContent() {
                   <p className="text-sm text-red-500">{errors.weight}</p>
                 )}
               </div>
+            </div>
+
+            {/* Gender Field */}
+            <div className="space-y-2">
+              <label htmlFor="gender" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                Gender
+              </label>
+              <Select
+                value={formData.gender || undefined}
+                onValueChange={(v) => handleInputChange("gender", v)}
+              >
+                <SelectTrigger id="gender" className="bg-white">
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
+                  <SelectItem value="non-binary">Non-binary</SelectItem>
+                  <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Smoker Exposure Field */}
@@ -415,8 +683,12 @@ export function PersonalizedRiskContent() {
 
             {/* Submit Button */}
             <div className="pt-4">
-              <Button type="submit" className="w-full sm:w-auto sm:px-12">
-                Calculate My Risk
+              <Button
+                type="submit"
+                className="w-full sm:w-auto sm:px-12"
+                disabled={riskSaving}
+              >
+                {riskSaved ? "Saved!" : riskSaving ? "Saving…" : "Save profile"}
               </Button>
             </div>
           </form>
