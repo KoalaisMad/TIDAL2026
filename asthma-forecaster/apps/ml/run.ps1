@@ -1,4 +1,7 @@
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Repo root (parent of apps/) so "from apps.ml.data" resolves
+$repoRoot = (Get-Item $scriptDir).Parent.Parent.FullName
+$env:PYTHONPATH = $repoRoot
 Set-Location $scriptDir
 
 function New-VenvWith {
@@ -37,4 +40,4 @@ if (-not (Test-Path .\.venv\Scripts\python.exe)) {
     exit 1
 }
 
-.\.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+.\.venv\Scripts\python.exe -m uvicorn api:app --host 0.0.0.0 --port 8000 --reload
