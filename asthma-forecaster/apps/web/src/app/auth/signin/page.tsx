@@ -7,11 +7,19 @@ import { useSearchParams } from "next/navigation"
 function SignInContent() {
   const searchParams = useSearchParams()
   const callbackPath = searchParams.get("callbackUrl") || "/breathe-well"
-  // Use absolute URL so NextAuth reliably redirects here after OAuth
-  const callbackUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}${callbackPath.startsWith("/") ? callbackPath : `/${callbackPath}`}`
-      : callbackPath
+  
+  // Normalize callbackUrl - if it's already a full URL, use as-is; otherwise make it relative
+  let callbackUrl = callbackPath
+  if (typeof window !== "undefined") {
+    try {
+      // If it's a full URL, parse and use just the pathname
+      const url = new URL(callbackPath)
+      callbackUrl = url.pathname
+    } catch {
+      // Not a full URL, treat as relative path
+      callbackUrl = callbackPath.startsWith("/") ? callbackPath : `/${callbackPath}`
+    }
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">

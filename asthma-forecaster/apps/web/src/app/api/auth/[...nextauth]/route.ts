@@ -16,8 +16,16 @@ export const authOptions: NextAuthOptions = {
       if (url.startsWith(signInPath) || url === `${baseUrl}${signInPath}`) {
         return `${baseUrl}/breathe-well`
       }
+      // If it's a relative path, prepend baseUrl
       if (url.startsWith("/")) return `${baseUrl}${url}`
-      if (new URL(url).origin === baseUrl) return url
+      // If it's already a full URL with the same origin, return as-is
+      try {
+        const urlObj = new URL(url)
+        if (urlObj.origin === baseUrl) return url
+      } catch {
+        // Invalid URL, fallback to breathe-well
+      }
+      // Default fallback
       return `${baseUrl}/breathe-well`
     },
     async session({ session, token }) {
